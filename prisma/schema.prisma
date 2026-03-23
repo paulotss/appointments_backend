@@ -1,0 +1,58 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ContactMethod {
+  whatsapp
+  phone
+  other
+
+  @@map("contact_method_enum")
+}
+
+model Specialty {
+  id           Int           @id @default(autoincrement())
+  name         String        @db.VarChar(100)
+  appointments Appointment[]
+
+  @@map("specialties")
+}
+
+model User {
+  id                       Int           @id @default(autoincrement())
+  name                     String        @db.VarChar(150)
+  passwordHash             String        @map("password_hash") @db.VarChar(255)
+  usernameLogin            String        @unique @map("username_login") @db.VarChar(100)
+  isAdmin                  Boolean       @default(false) @map("is_admin")
+  attendedAppointments     Appointment[] @relation("AttendantAppointments")
+
+  @@map("users")
+}
+
+model Appointment {
+  id             Int           @id @default(autoincrement())
+  date           DateTime      @db.Date
+  clientName     String        @map("client_name") @db.VarChar(150)
+  phone          String?       @db.VarChar(20)
+  contactMethod  ContactMethod @map("contact_method")
+  firstTime      Boolean       @map("first_time")
+  scheduled      Boolean
+  reason         String?       @db.VarChar(255)
+  specialtyId    Int?          @map("specialty_id")
+  notes          String?
+  attendantId    Int?          @map("attendant_id")
+
+  specialty Specialty? @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  attendant User?      @relation("AttendantAppointments", fields: [attendantId], references: [id], onDelete: SetNull)
+
+  @@map("appointments")
+}
