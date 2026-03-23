@@ -95,3 +95,5 @@ npm run test
 npm run test:e2e
 npm run test:cov
 ```
+
+$2b$10$zOTla1zqUUlXhfwKa573TuoBr8w/6xIV41Whv3KBAgzzldIsA/KMG
