@@ -45,8 +45,8 @@ npm run prisma:studio
 npm run start:dev
 ```
 
-API: `http://localhost:3000`  
-Swagger: `http://localhost:3000/docs`
+API: `http://localhost:3000/api`  
+Swagger: `http://localhost:3000/api/docs`
 
 ## 4) Rodar com Docker (API + Postgres)
 
@@ -76,9 +76,9 @@ npm run docker:prod:down
 
 ## Portas padrao
 
-- Dev API: `http://localhost:3000`
+- Dev API: `http://localhost:3000/api`
 - Dev Postgres: `localhost:5432`
-- Prod API: `http://localhost:3001`
+- Prod API: `http://localhost:3001/api`
 - Prod Postgres: `localhost:5433`
 
 ## Scripts uteis
