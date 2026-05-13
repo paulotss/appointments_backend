@@ -43,7 +43,7 @@ export class CallsService {
   findAll() {
     return this.prisma.call.findMany({
       include: { user: userInclude },
-      orderBy: { id: 'asc' },
+      orderBy: { receivedAt: 'desc' },
     });
   }
 
