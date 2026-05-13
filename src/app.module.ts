@@ -3,6 +3,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { AuthModule } from './auth/auth.module';
+import { CallsModule } from './calls/calls.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { SpecialtiesModule } from './specialties/specialties.module';
 import { UsersModule } from './users/users.module';
@@ -13,6 +14,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     SpecialtiesModule,
     AppointmentsModule,
+    CallsModule,
     AuthModule,
   ],
   controllers: [AppController],

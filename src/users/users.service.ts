@@ -23,6 +23,7 @@ export class UsersService {
           passwordHash,
           usernameLogin: createUserDto.usernameLogin,
           isAdmin: createUserDto.isAdmin ?? false,
+          extension: createUserDto.extension,
         },
         omit: { passwordHash: true },
       });
@@ -108,6 +109,11 @@ export class UsersService {
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === 'P2002'
     ) {
+      const target = error.meta?.target;
+      const fields = Array.isArray(target) ? target : target != null ? [target] : [];
+      if (fields.includes('extension')) {
+        throw new BadRequestException('extension already in use');
+      }
       throw new BadRequestException('usernameLogin already exists');
     }
   }

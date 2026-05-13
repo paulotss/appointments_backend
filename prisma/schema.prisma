@@ -19,6 +19,14 @@ enum ContactMethod {
   @@map("contact_method_enum")
 }
 
+enum CallRecordStatus {
+  pending
+  registered
+  cancelled
+
+  @@map("call_record_status_enum")
+}
+
 model Specialty {
   id           Int           @id @default(autoincrement())
   name         String        @db.VarChar(100)
@@ -33,9 +41,26 @@ model User {
   passwordHash             String        @map("password_hash") @db.VarChar(255)
   usernameLogin            String        @unique @map("username_login") @db.VarChar(100)
   isAdmin                  Boolean       @default(false) @map("is_admin")
+  extension                Int?          @unique @map("extension")
   attendedAppointments     Appointment[] @relation("AttendantAppointments")
+  calls                    Call[]
 
   @@map("users")
+}
+
+model Call {
+  id            Int              @id @default(autoincrement())
+  receivedAt    DateTime         @default(now()) @map("received_at") @db.Timestamp(3)
+  origin        String           @map("origin") @db.VarChar(255)
+  extension     Int              @map("extension")
+  status        String           @map("status") @db.VarChar(100)
+  recordStatus  CallRecordStatus @default(pending) @map("record_status")
+  note          String?          @map("note") @db.Text
+  userId        Int?             @map("user_id")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("calls")
 }
 
 model Appointment {

@@ -3,4 +3,5 @@ export class CreateUserDto {
   passwordHash!: string;
   usernameLogin!: string;
   isAdmin?: boolean;
+  extension?: number | null;
 }

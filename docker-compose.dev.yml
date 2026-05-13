@@ -6,7 +6,7 @@ services:
       target: development
     env_file:
       - .env.docker.dev
-    command: sh -c "npm run prisma:generate && npm run prisma:db:push && npm run start:dev"
+    command: sh -c "npm run prisma:generate && npm run prisma:migrate:deploy && npm run start:dev"
     ports:
       - '3000:3000'
     volumes:
