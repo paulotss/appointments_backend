@@ -30,6 +30,7 @@ export class CallsService {
           ? new Date(createCallDto.receivedAt)
           : undefined,
         origin: createCallDto.origin,
+        destination: createCallDto.destination,
         extension: createCallDto.extension,
         status: createCallDto.status,
         recordStatus,
@@ -78,6 +79,12 @@ export class CallsService {
     }
 
     const data: Prisma.CallUncheckedUpdateInput = {};
+    if (updateCallDto.status !== undefined) {
+      data.status = updateCallDto.status;
+    }
+    if (updateCallDto.destination !== undefined) {
+      data.destination = updateCallDto.destination;
+    }
     if (updateCallDto.recordStatus !== undefined) {
       data.recordStatus = updateCallDto.recordStatus;
     }

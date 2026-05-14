@@ -27,6 +27,14 @@ enum CallRecordStatus {
   @@map("call_record_status_enum")
 }
 
+enum CallStatus {
+  ATENDIDO
+  NAO_ATENDIDO @map("NÃO ATENDIDO")
+  REALIZADO
+
+  @@map("call_status_enum")
+}
+
 model Specialty {
   id           Int           @id @default(autoincrement())
   name         String        @db.VarChar(100)
@@ -52,8 +60,9 @@ model Call {
   id            Int              @id @default(autoincrement())
   receivedAt    DateTime         @default(now()) @map("received_at") @db.Timestamp(3)
   origin        String           @map("origin") @db.VarChar(255)
+  destination   String           @map("destination") @db.VarChar(255)
   extension     Int              @map("extension")
-  status        String           @map("status") @db.VarChar(100)
+  status        CallStatus       @map("status")
   recordStatus  CallRecordStatus @default(pending) @map("record_status")
   note          String?          @map("note") @db.Text
   userId        Int?             @map("user_id")

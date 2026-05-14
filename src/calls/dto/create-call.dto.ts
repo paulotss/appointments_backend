@@ -1,4 +1,4 @@
-import { CallRecordStatus } from '@prisma/client';
+import { CallRecordStatus, CallStatus } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateCallDto {
@@ -8,11 +8,14 @@ export class CreateCallDto {
   @ApiProperty({ example: '+551140028922' })
   origin!: string;
 
+  @ApiProperty({ example: 'Ramal 2010' })
+  destination!: string;
+
   @ApiProperty({ example: 2010 })
   extension!: number;
 
-  @ApiProperty({ example: 'answered' })
-  status!: string;
+  @ApiProperty({ enum: CallStatus, example: CallStatus.ATENDIDO })
+  status!: CallStatus;
 
   @ApiPropertyOptional({
     enum: CallRecordStatus,
