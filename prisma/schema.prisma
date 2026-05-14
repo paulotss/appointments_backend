@@ -67,7 +67,8 @@ model Call {
   note          String?          @map("note") @db.Text
   userId        Int?             @map("user_id")
 
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  appointment Appointment?
 
   @@map("calls")
 }
@@ -84,9 +85,11 @@ model Appointment {
   specialtyId    Int?          @map("specialty_id")
   notes          String?
   attendantId    Int?          @map("attendant_id")
+  callId         Int?          @unique @map("call_id")
 
   specialty Specialty? @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
   attendant User?      @relation("AttendantAppointments", fields: [attendantId], references: [id], onDelete: SetNull)
+  call      Call?      @relation(fields: [callId], references: [id], onDelete: SetNull)
 
   @@map("appointments")
 }

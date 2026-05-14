@@ -4,6 +4,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 
+const appointmentCallInclude = {
+  include: {
+    user: {
+      omit: { passwordHash: true } as const,
+    },
+  },
+} as const;
+
 @Injectable()
 export class AppointmentsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -14,6 +22,7 @@ export class AppointmentsService {
       include: {
         specialty: true,
         attendant: true,
+        call: appointmentCallInclude,
       },
     });
   }
@@ -23,6 +32,7 @@ export class AppointmentsService {
       include: {
         specialty: true,
         attendant: true,
+        call: appointmentCallInclude,
       },
       orderBy: { id: 'asc' },
     });
@@ -34,6 +44,7 @@ export class AppointmentsService {
       include: {
         specialty: true,
         attendant: true,
+        call: appointmentCallInclude,
       },
     });
 
@@ -53,6 +64,7 @@ export class AppointmentsService {
       include: {
         specialty: true,
         attendant: true,
+        call: appointmentCallInclude,
       },
     });
   }
@@ -76,6 +88,7 @@ export class AppointmentsService {
       specialtyId: dto.specialtyId,
       notes: dto.notes,
       attendantId: dto.attendantId,
+      callId: dto.callId ?? undefined,
     };
   }
 
@@ -93,6 +106,7 @@ export class AppointmentsService {
       specialtyId: dto.specialtyId,
       notes: dto.notes,
       attendantId: dto.attendantId,
+      callId: dto.callId,
     };
   }
 }

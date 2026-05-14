@@ -12,6 +12,15 @@ const userInclude = {
   omit: { passwordHash: true } as const,
 };
 
+const callAppointmentInclude = {
+  include: {
+    specialty: true,
+    attendant: {
+      omit: { passwordHash: true } as const,
+    },
+  },
+} as const;
+
 @Injectable()
 export class CallsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -37,13 +46,13 @@ export class CallsService {
         note: createCallDto.note ?? undefined,
         userId: user?.id,
       },
-      include: { user: userInclude },
+      include: { user: userInclude, appointment: callAppointmentInclude },
     });
   }
 
   findAll() {
     return this.prisma.call.findMany({
-      include: { user: userInclude },
+      include: { user: userInclude, appointment: callAppointmentInclude },
       orderBy: { receivedAt: 'desc' },
     });
   }
@@ -51,7 +60,7 @@ export class CallsService {
   async findOne(id: number) {
     const call = await this.prisma.call.findUnique({
       where: { id },
-      include: { user: userInclude },
+      include: { user: userInclude, appointment: callAppointmentInclude },
     });
 
     if (!call) {
@@ -95,7 +104,7 @@ export class CallsService {
     return this.prisma.call.update({
       where: { id },
       data,
-      include: { user: userInclude },
+      include: { user: userInclude, appointment: callAppointmentInclude },
     });
   }
 }

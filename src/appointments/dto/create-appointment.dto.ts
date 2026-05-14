@@ -34,4 +34,7 @@ export class CreateAppointmentDto {
 
   @ApiPropertyOptional({ example: 2, nullable: true })
   attendantId?: number | null;
+
+  @ApiPropertyOptional({ example: 5, nullable: true })
+  callId?: number | null;
 }
