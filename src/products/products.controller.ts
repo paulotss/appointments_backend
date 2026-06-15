@@ -7,8 +7,9 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
@@ -26,15 +27,28 @@ export class ProductsController {
 
   @Get()
   @ApiOperation({ summary: 'Listar produtos' })
-  findAll() {
-    return this.productsService.findAll();
+  @ApiQuery({
+    name: 'all',
+    required: false,
+    description: 'Incluir produtos inativos',
+  })
+  findAll(@Query('all') all?: string) {
+    return this.productsService.findAll(all !== undefined);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Buscar produto por id' })
   @ApiParam({ name: 'id', example: 1 })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.productsService.findOne(id);
+  @ApiQuery({
+    name: 'all',
+    required: false,
+    description: 'Incluir produtos inativos',
+  })
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('all') all?: string,
+  ) {
+    return this.productsService.findOne(id, all !== undefined);
   }
 
   @Patch(':id')

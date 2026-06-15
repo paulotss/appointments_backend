@@ -14,20 +14,21 @@ export class ProductsService {
     });
   }
 
-  findAll() {
+  findAll(includeInactive = false) {
     return this.prisma.product.findMany({
+      where: includeInactive ? undefined : { isActive: true },
       orderBy: { id: 'asc' },
       include: { category: true },
     });
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, includeInactive = false) {
     const product = await this.prisma.product.findUnique({
       where: { id },
       include: { category: true },
     });
 
-    if (!product) {
+    if (!product || (!includeInactive && !product.isActive)) {
       throw new NotFoundException(`Product ${id} not found`);
     }
 
@@ -35,7 +36,7 @@ export class ProductsService {
   }
 
   async update(id: number, updateProductDto: UpdateProductDto) {
-    await this.findOne(id);
+    await this.findOne(id, true);
 
     return this.prisma.product.update({
       where: { id },
@@ -45,7 +46,7 @@ export class ProductsService {
   }
 
   async remove(id: number) {
-    await this.findOne(id);
+    await this.findOne(id, true);
 
     return this.prisma.product.update({
       where: { id },
