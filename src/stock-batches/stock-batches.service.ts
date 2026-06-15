@@ -3,15 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStockBatchDto } from './dto/create-stock-batch.dto';
 import { UpdateStockBatchDto } from './dto/update-stock-batch.dto';
-
-const stockBatchInclude = {
-  product: true,
-  sector: true,
-  location: true,
-  user: {
-    omit: { passwordHash: true },
-  },
-} satisfies Prisma.StockBatchInclude;
+import { stockBatchInclude } from './stock-batch.include';
 
 @Injectable()
 export class StockBatchesService {

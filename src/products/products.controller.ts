@@ -9,12 +9,22 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiExtraModels,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
+import { StockBatchResponseDto } from '../stock-batches/dto/stock-batch-response.dto';
 import { CreateProductDto } from './dto/create-product.dto';
+import { StockConsolidationDto } from './dto/stock-consolidation.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
 
 @ApiTags('products')
+@ApiExtraModels(StockConsolidationDto, StockBatchResponseDto)
 @Controller('products')
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
@@ -34,6 +44,26 @@ export class ProductsController {
   })
   findAll(@Query('all') all?: string) {
     return this.productsService.findAll(all !== undefined);
+  }
+
+  @Get('stock-consolidation')
+  @ApiOperation({
+    summary: 'Consolidar estoque por produto',
+    description:
+      'Retorna visao consolidada de estoque por produto, incluindo quantidade total, preco medio, lotes a vencer/vencidos e lotes com saldo.',
+  })
+  @ApiQuery({
+    name: 'all',
+    required: false,
+    description: 'Incluir produtos inativos',
+  })
+  @ApiOkResponse({
+    type: StockConsolidationDto,
+    isArray: true,
+    description: 'Lista de produtos com estoque consolidado',
+  })
+  findStockConsolidation(@Query('all') all?: string) {
+    return this.productsService.findStockConsolidation(all !== undefined);
   }
 
   @Get(':id')
