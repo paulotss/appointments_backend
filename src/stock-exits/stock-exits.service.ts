@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { stockBatchQuantityUpdate } from '../stock-batches/stock-batch-auto-close';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStockExitDto } from './dto/create-stock-exit.dto';
 import { UpdateStockExitDto } from './dto/update-stock-exit.dto';
@@ -51,9 +52,9 @@ export class StockExitsService {
 
       await tx.stockBatch.update({
         where: { id: createStockExitDto.batchId },
-        data: {
-          currentQuantity: batch.currentQuantity - createStockExitDto.quantity,
-        },
+        data: stockBatchQuantityUpdate(
+          batch.currentQuantity - createStockExitDto.quantity,
+        ),
       });
 
       return exit;

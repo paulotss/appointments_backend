@@ -1,9 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { stockBatchQuantityUpdate } from './stock-batch-auto-close';
+import { stockBatchInclude } from './stock-batch.include';
 import { CreateStockBatchDto } from './dto/create-stock-batch.dto';
 import { UpdateStockBatchDto } from './dto/update-stock-batch.dto';
-import { stockBatchInclude } from './stock-batch.include';
+import { StockBatchListStatus } from './stock-batch-list-status.enum';
 
 @Injectable()
 export class StockBatchesService {
@@ -18,7 +23,7 @@ export class StockBatchesService {
         productId: createStockBatchDto.productId,
         sectorId: createStockBatchDto.sectorId,
         initialQuantity: createStockBatchDto.initialQuantity,
-        currentQuantity,
+        ...stockBatchQuantityUpdate(currentQuantity),
         value: createStockBatchDto.value,
         movementDate: new Date(createStockBatchDto.movementDate),
         expirationDate: createStockBatchDto.expirationDate
@@ -33,8 +38,14 @@ export class StockBatchesService {
     });
   }
 
-  findAll() {
+  findAll(status: StockBatchListStatus = StockBatchListStatus.Open) {
+    const where =
+      status === StockBatchListStatus.All
+        ? undefined
+        : { isClosed: status === StockBatchListStatus.Closed };
+
     return this.prisma.stockBatch.findMany({
+      where,
       orderBy: { id: 'asc' },
       include: stockBatchInclude,
     });
@@ -51,6 +62,16 @@ export class StockBatchesService {
     }
 
     return batch;
+  }
+
+  async close(id: number) {
+    await this.findOne(id);
+
+    return this.prisma.stockBatch.update({
+      where: { id },
+      data: { isClosed: true },
+      include: stockBatchInclude,
+    });
   }
 
   async update(id: number, updateStockBatchDto: UpdateStockBatchDto) {
@@ -98,7 +119,10 @@ export class StockBatchesService {
     }
 
     if (updateStockBatchDto.currentQuantity !== undefined) {
-      data.currentQuantity = updateStockBatchDto.currentQuantity;
+      Object.assign(
+        data,
+        stockBatchQuantityUpdate(updateStockBatchDto.currentQuantity),
+      );
     }
 
     if (updateStockBatchDto.value !== undefined) {

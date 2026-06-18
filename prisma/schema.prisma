@@ -150,6 +150,7 @@ model StockBatch {
   userId           Int             @map("user_id")
   invoiceAccessKey String?         @map("invoice_access_key") @db.VarChar(45)
   locationId       Int             @map("location_id")
+  isClosed         Boolean         @default(false) @map("is_closed")
   product          Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
   sector           Sector          @relation(fields: [sectorId], references: [id], onDelete: Restrict)
   user             User            @relation(fields: [userId], references: [id], onDelete: Restrict)

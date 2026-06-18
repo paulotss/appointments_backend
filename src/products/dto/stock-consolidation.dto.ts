@@ -41,7 +41,7 @@ export class StockConsolidationDto {
   @ApiProperty({
     type: StockBatchResponseDto,
     isArray: true,
-    description: 'Lotes com currentQuantity maior que zero',
+    description: 'Lotes abertos (isClosed=false) com currentQuantity maior que zero',
   })
   stockBatches!: StockBatchResponseDto[];
 }

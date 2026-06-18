@@ -49,6 +49,7 @@ export class ProductsService {
       orderBy: { id: 'asc' },
       include: {
         stockBatches: {
+          where: { isClosed: false },
           include: stockBatchInclude,
           orderBy: [{ movementDate: 'desc' }, { id: 'desc' }],
         },
@@ -101,7 +102,7 @@ export class ProductsService {
     const in30Days = this.addDays(today, 30);
 
     const batchesWithStock = batches.filter(
-      (batch) => batch.currentQuantity > 0,
+      (batch) => !batch.isClosed && batch.currentQuantity > 0,
     );
 
     const totalQuantity = batches.reduce(

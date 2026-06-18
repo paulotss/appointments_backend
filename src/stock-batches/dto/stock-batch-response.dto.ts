@@ -102,6 +102,13 @@ export class StockBatchResponseDto {
   @ApiProperty({ example: 1 })
   locationId!: number;
 
+  @ApiProperty({
+    example: false,
+    description:
+      'Indica se o lote esta fechado. Fechado automaticamente quando currentQuantity chega a 0.',
+  })
+  isClosed!: boolean;
+
   @ApiProperty({ type: StockBatchProductSummaryDto })
   product!: StockBatchProductSummaryDto;
 

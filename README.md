@@ -96,4 +96,28 @@ npm run test:e2e
 npm run test:cov
 ```
 
-$2b$10$zOTla1zqUUlXhfwKa573TuoBr8w/6xIV41Whv3KBAgzzldIsA/KMG
+## Modulo de estoque
+
+### Lotes (`/api/stock-batches`)
+
+| Metodo | Rota | Descricao |
+|--------|------|-----------|
+| `POST` | `/stock-batches` | Criar lote (entrada). `isClosed` inicia como `false`. |
+| `GET` | `/stock-batches` | Listar lotes abertos (`status=open`, padrao). |
+| `GET` | `/stock-batches?status=closed` | Listar somente lotes fechados. |
+| `GET` | `/stock-batches?status=all` | Listar todos os lotes (abertos e fechados). |
+| `GET` | `/stock-batches/:id` | Buscar lote por id. |
+| `PATCH` | `/stock-batches/:id/close` | Fechar lote manualmente (`isClosed=true`). |
+| `PATCH` | `/stock-batches/:id` | Atualizar lote. |
+| `DELETE` | `/stock-batches/:id` | Remover lote. |
+
+**Regras de negocio:**
+
+- Ao criar um lote, `isClosed` e `false` por padrao.
+- Quando `currentQuantity` chega a `0` (via saida de estoque ou atualizacao do lote), `isClosed` e definido automaticamente como `true`.
+- A consolidacao de estoque em `/api/products/stock-consolidation` considera apenas lotes abertos (`isClosed=false`).
+
+### Saidas (`/api/stock-exits`)
+
+Ao registrar uma saida que zera o saldo do lote, o lote e fechado automaticamente.
+
