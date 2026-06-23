@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { normalizeName } from '../common/normalize-name';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStorageLocationDto } from './dto/create-storage-location.dto';
 import { UpdateStorageLocationDto } from './dto/update-storage-location.dto';
@@ -9,7 +10,10 @@ export class StorageLocationsService {
 
   create(createStorageLocationDto: CreateStorageLocationDto) {
     return this.prisma.storageLocation.create({
-      data: createStorageLocationDto,
+      data: {
+        ...createStorageLocationDto,
+        name: normalizeName(createStorageLocationDto.name),
+      },
     });
   }
 
@@ -36,7 +40,12 @@ export class StorageLocationsService {
 
     return this.prisma.storageLocation.update({
       where: { id },
-      data: updateStorageLocationDto,
+      data: {
+        ...updateStorageLocationDto,
+        ...(updateStorageLocationDto.name !== undefined && {
+          name: normalizeName(updateStorageLocationDto.name),
+        }),
+      },
     });
   }
 
