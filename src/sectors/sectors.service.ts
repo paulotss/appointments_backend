@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { normalizeName } from '../common/normalize-name';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSectorDto } from './dto/create-sector.dto';
 import { UpdateSectorDto } from './dto/update-sector.dto';
@@ -8,7 +9,9 @@ export class SectorsService {
   constructor(private readonly prisma: PrismaService) {}
 
   create(createSectorDto: CreateSectorDto) {
-    return this.prisma.sector.create({ data: createSectorDto });
+    return this.prisma.sector.create({
+      data: { ...createSectorDto, name: normalizeName(createSectorDto.name) },
+    });
   }
 
   findAll() {
@@ -32,7 +35,12 @@ export class SectorsService {
 
     return this.prisma.sector.update({
       where: { id },
-      data: updateSectorDto,
+      data: {
+        ...updateSectorDto,
+        ...(updateSectorDto.name !== undefined && {
+          name: normalizeName(updateSectorDto.name),
+        }),
+      },
     });
   }
 

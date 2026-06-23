@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { normalizeName } from '../common/normalize-name';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
@@ -79,7 +80,7 @@ export class AppointmentsService {
   ): Prisma.AppointmentUncheckedCreateInput {
     return {
       date: new Date(dto.date),
-      clientName: dto.clientName,
+      clientName: normalizeName(dto.clientName),
       phone: dto.phone,
       contactMethod: dto.contactMethod,
       firstTime: dto.firstTime,
@@ -97,7 +98,10 @@ export class AppointmentsService {
   ): Prisma.AppointmentUncheckedUpdateInput {
     return {
       date: dto.date ? new Date(dto.date) : undefined,
-      clientName: dto.clientName,
+      clientName:
+        dto.clientName !== undefined
+          ? normalizeName(dto.clientName)
+          : undefined,
       phone: dto.phone,
       contactMethod: dto.contactMethod,
       firstTime: dto.firstTime,

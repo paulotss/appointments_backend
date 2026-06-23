@@ -51,31 +51,31 @@ async function main() {
 
     const specialties = await prisma.specialty.createManyAndReturn({
       data: [
-        { name: 'Clinico Geral' },
-        { name: 'Cardiologia' },
-        { name: 'Dermatologia' },
-        { name: 'Psicologia' },
+        { name: 'CLINICO GERAL' },
+        { name: 'CARDIOLOGIA' },
+        { name: 'DERMATOLOGIA' },
+        { name: 'PSICOLOGIA' },
       ],
     });
 
     const categories = await prisma.category.createManyAndReturn({
       data: [
-        { name: 'Medicamentos' },
-        { name: 'Material de Escritorio' },
-        { name: 'Higiene' },
+        { name: 'MEDICAMENTOS' },
+        { name: 'MATERIAL DE ESCRITORIO' },
+        { name: 'HIGIENE' },
       ],
     });
 
     const sectors = await prisma.sector.createManyAndReturn({
       data: [
-        { name: 'Farmacia', isActive: true },
-        { name: 'Almoxarifado', isActive: true },
-        { name: 'Deposito Inativo', isActive: false },
+        { name: 'FARMACIA', isActive: true },
+        { name: 'ALMOXARIFADO', isActive: true },
+        { name: 'DEPOSITO INATIVO', isActive: false },
       ],
     });
 
     const storageLocations = await prisma.storageLocation.createManyAndReturn({
-      data: [{ name: 'Prateleira A1' }, { name: 'Armario B2' }],
+      data: [{ name: 'PRATELEIRA A1' }, { name: 'ARMARIO B2' }],
     });
 
     const adminUser = users.find((user) => user.usernameLogin === 'admin');
@@ -83,32 +83,32 @@ async function main() {
       (user) => user.usernameLogin === 'atendente',
     );
     const cardiology = specialties.find(
-      (specialty) => specialty.name === 'Cardiologia',
+      (specialty) => specialty.name === 'CARDIOLOGIA',
     );
     const psychology = specialties.find(
-      (specialty) => specialty.name === 'Psicologia',
+      (specialty) => specialty.name === 'PSICOLOGIA',
     );
     const generalClinic = specialties.find(
-      (specialty) => specialty.name === 'Clinico Geral',
+      (specialty) => specialty.name === 'CLINICO GERAL',
     );
     const medicationsCategory = categories.find(
-      (category) => category.name === 'Medicamentos',
+      (category) => category.name === 'MEDICAMENTOS',
     );
     const officeCategory = categories.find(
-      (category) => category.name === 'Material de Escritorio',
+      (category) => category.name === 'MATERIAL DE ESCRITORIO',
     );
     const hygieneCategory = categories.find(
-      (category) => category.name === 'Higiene',
+      (category) => category.name === 'HIGIENE',
     );
-    const pharmacySector = sectors.find((sector) => sector.name === 'Farmacia');
+    const pharmacySector = sectors.find((sector) => sector.name === 'FARMACIA');
     const warehouseSector = sectors.find(
-      (sector) => sector.name === 'Almoxarifado',
+      (sector) => sector.name === 'ALMOXARIFADO',
     );
     const shelfA1 = storageLocations.find(
-      (location) => location.name === 'Prateleira A1',
+      (location) => location.name === 'PRATELEIRA A1',
     );
     const cabinetB2 = storageLocations.find(
-      (location) => location.name === 'Armario B2',
+      (location) => location.name === 'ARMARIO B2',
     );
 
     if (
@@ -131,35 +131,35 @@ async function main() {
     const products = await prisma.product.createManyAndReturn({
       data: [
         {
-          name: 'Dipirona 500mg',
+          name: 'DIPIRONA 500MG',
           sku: 'MED-DIP-500',
           categoryId: medicationsCategory.id,
           minimumStock: 50,
           isActive: true,
         },
         {
-          name: 'Paracetamol 750mg',
+          name: 'PARACETAMOL 750MG',
           sku: 'MED-PAR-750',
           categoryId: medicationsCategory.id,
           minimumStock: 30,
           isActive: true,
         },
         {
-          name: 'Papel A4 500 folhas',
+          name: 'PAPEL A4 500 FOLHAS',
           sku: 'OFF-PAP-A4',
           categoryId: officeCategory.id,
           minimumStock: 10,
           isActive: true,
         },
         {
-          name: 'Alcool Gel 500ml',
+          name: 'ALCOOL GEL 500ML',
           sku: 'HYG-ALC-500',
           categoryId: hygieneCategory.id,
           minimumStock: 20,
           isActive: true,
         },
         {
-          name: 'Produto Descontinuado',
+          name: 'PRODUTO DESCONTINUADO',
           sku: 'DISC-001',
           categoryId: officeCategory.id,
           minimumStock: 0,
@@ -244,7 +244,7 @@ async function main() {
       data: [
         {
           date: new Date('2026-03-25'),
-          clientName: 'Maria Silva',
+          clientName: 'MARIA SILVA',
           phone: '11999990001',
           contactMethod: ContactMethod.whatsapp,
           firstTime: true,
@@ -256,7 +256,7 @@ async function main() {
         },
         {
           date: new Date('2026-03-27'),
-          clientName: 'Joao Santos',
+          clientName: 'JOAO SANTOS',
           phone: '11999990002',
           contactMethod: ContactMethod.phone,
           firstTime: false,
@@ -268,7 +268,7 @@ async function main() {
         },
         {
           date: new Date('2026-04-01'),
-          clientName: 'Ana Pereira',
+          clientName: 'ANA PEREIRA',
           phone: '11999990003',
           contactMethod: ContactMethod.other,
           firstTime: true,

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { normalizeName } from '../common/normalize-name';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSpecialtyDto } from './dto/create-specialty.dto';
 import { UpdateSpecialtyDto } from './dto/update-specialty.dto';
@@ -8,7 +9,12 @@ export class SpecialtiesService {
   constructor(private readonly prisma: PrismaService) {}
 
   create(createSpecialtyDto: CreateSpecialtyDto) {
-    return this.prisma.specialty.create({ data: createSpecialtyDto });
+    return this.prisma.specialty.create({
+      data: {
+        ...createSpecialtyDto,
+        name: normalizeName(createSpecialtyDto.name),
+      },
+    });
   }
 
   findAll() {
@@ -32,7 +38,12 @@ export class SpecialtiesService {
 
     return this.prisma.specialty.update({
       where: { id },
-      data: updateSpecialtyDto,
+      data: {
+        ...updateSpecialtyDto,
+        ...(updateSpecialtyDto.name !== undefined && {
+          name: normalizeName(updateSpecialtyDto.name),
+        }),
+      },
     });
   }
 

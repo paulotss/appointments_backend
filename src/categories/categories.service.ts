@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { normalizeName } from '../common/normalize-name';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -8,7 +9,9 @@ export class CategoriesService {
   constructor(private readonly prisma: PrismaService) {}
 
   create(createCategoryDto: CreateCategoryDto) {
-    return this.prisma.category.create({ data: createCategoryDto });
+    return this.prisma.category.create({
+      data: { ...createCategoryDto, name: normalizeName(createCategoryDto.name) },
+    });
   }
 
   findAll() {
@@ -32,7 +35,12 @@ export class CategoriesService {
 
     return this.prisma.category.update({
       where: { id },
-      data: updateCategoryDto,
+      data: {
+        ...updateCategoryDto,
+        ...(updateCategoryDto.name !== undefined && {
+          name: normalizeName(updateCategoryDto.name),
+        }),
+      },
     });
   }
 

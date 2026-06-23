@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { normalizeName } from '../common/normalize-name';
 import { PrismaService } from '../prisma/prisma.service';
 import { stockBatchInclude } from '../stock-batches/stock-batch.include';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -17,7 +18,7 @@ export class ProductsService {
 
   create(createProductDto: CreateProductDto) {
     return this.prisma.product.create({
-      data: createProductDto,
+      data: { ...createProductDto, name: normalizeName(createProductDto.name) },
       include: { category: true },
     });
   }
@@ -64,7 +65,12 @@ export class ProductsService {
 
     return this.prisma.product.update({
       where: { id },
-      data: updateProductDto,
+      data: {
+        ...updateProductDto,
+        ...(updateProductDto.name !== undefined && {
+          name: normalizeName(updateProductDto.name),
+        }),
+      },
       include: { category: true },
     });
   }
