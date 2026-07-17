@@ -25,4 +25,10 @@ export class CreateStockExitDto {
 
   @ApiProperty({ example: '2026-06-12' })
   exitDate!: string;
+
+  @ApiPropertyOptional({
+    example: 1,
+    description: 'Profissional da saude que fez a saida (opcional)',
+  })
+  healthProfessionalId?: number;
 }

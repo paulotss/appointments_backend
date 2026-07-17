@@ -42,12 +42,40 @@ enum StockUnit {
   @@map("stock_unit_enum")
 }
 
+enum CouncilType {
+  CRM
+  CRO
+  CRP
+  COREN
+  OTHER
+
+  @@map("council_type_enum")
+}
+
 model Specialty {
-  id           Int           @id @default(autoincrement())
-  name         String        @db.VarChar(100)
-  appointments Appointment[]
+  id                  Int                  @id @default(autoincrement())
+  name                String               @db.VarChar(100)
+  appointments        Appointment[]
+  healthProfessionals HealthProfessional[]
 
   @@map("specialties")
+}
+
+model HealthProfessional {
+  id            Int         @id @default(autoincrement())
+  name          String      @db.VarChar(150)
+  specialtyId   Int         @map("specialty_id")
+  councilType   CouncilType @map("council_type")
+  councilNumber String      @map("council_number") @db.VarChar(30)
+  cpf           String      @unique @db.VarChar(11)
+  phone         String?     @db.VarChar(20)
+  email         String?     @db.VarChar(150)
+  isActive      Boolean     @default(true) @map("is_active")
+  registeredAt  DateTime    @default(now()) @map("registered_at") @db.Date
+  specialty     Specialty   @relation(fields: [specialtyId], references: [id], onDelete: Restrict)
+  stockExits    StockExit[]
+
+  @@map("health_professionals")
 }
 
 model User {
@@ -170,13 +198,15 @@ model StockBatch {
 }
 
 model StockExit {
-  id       Int        @id @default(autoincrement())
-  batchId  Int        @map("batch_id")
-  quantity Int
-  userId   Int        @map("user_id")
-  exitDate DateTime   @map("exit_date") @db.Date
-  batch    StockBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
-  user     User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  id                   Int                 @id @default(autoincrement())
+  batchId              Int                 @map("batch_id")
+  quantity             Int
+  userId               Int                 @map("user_id")
+  exitDate             DateTime            @map("exit_date") @db.Date
+  healthProfessionalId Int?                @map("health_professional_id")
+  batch                StockBatch          @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  user                 User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  healthProfessional   HealthProfessional? @relation(fields: [healthProfessionalId], references: [id], onDelete: SetNull)
 
   @@map("stock_exits")
 }

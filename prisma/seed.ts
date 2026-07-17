@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { ContactMethod, PrismaClient } from '@prisma/client';
+import { ContactMethod, CouncilType, PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { Pool } from 'pg';
 
@@ -24,6 +24,7 @@ async function main() {
     await prisma.storageLocation.deleteMany();
     await prisma.appointment.deleteMany();
     await prisma.call.deleteMany();
+    await prisma.healthProfessional.deleteMany();
     await prisma.specialty.deleteMany();
     await prisma.user.deleteMany();
 
@@ -91,6 +92,9 @@ async function main() {
     const generalClinic = specialties.find(
       (specialty) => specialty.name === 'CLINICO GERAL',
     );
+    const dermatology = specialties.find(
+      (specialty) => specialty.name === 'DERMATOLOGIA',
+    );
     const medicationsCategory = categories.find(
       (category) => category.name === 'MEDICAMENTOS',
     );
@@ -117,6 +121,7 @@ async function main() {
       !cardiology ||
       !psychology ||
       !generalClinic ||
+      !dermatology ||
       !medicationsCategory ||
       !officeCategory ||
       !hygieneCategory ||
@@ -126,6 +131,48 @@ async function main() {
       !cabinetB2
     ) {
       throw new Error('Failed to create required seed references');
+    }
+
+    const healthProfessionals = await prisma.healthProfessional.createManyAndReturn({
+      data: [
+        {
+          name: 'DR. CARLOS MENDES',
+          specialtyId: cardiology.id,
+          councilType: CouncilType.CRM,
+          councilNumber: '123456',
+          cpf: '52998224725',
+          phone: '11988887777',
+          email: 'carlos.mendes@email.com',
+          isActive: true,
+        },
+        {
+          name: 'DRA. ANA COSTA',
+          specialtyId: generalClinic.id,
+          councilType: CouncilType.CRM,
+          councilNumber: '654321',
+          cpf: '39053344705',
+          phone: '11977776666',
+          email: 'ana.costa@email.com',
+          isActive: true,
+        },
+        {
+          name: 'ENF. PAULA LIMA',
+          specialtyId: dermatology.id,
+          councilType: CouncilType.COREN,
+          councilNumber: '98765',
+          cpf: '11144477735',
+          phone: '11966665555',
+          isActive: false,
+        },
+      ],
+    });
+
+    const cardiologist = healthProfessionals.find(
+      (professional) => professional.cpf === '52998224725',
+    );
+
+    if (!cardiologist) {
+      throw new Error('Failed to create required health professional seed references');
     }
 
     const products = await prisma.product.createManyAndReturn({
@@ -257,6 +304,7 @@ async function main() {
           quantity: 20,
           userId: attendantUser.id,
           exitDate: new Date('2026-06-08'),
+          healthProfessionalId: cardiologist.id,
         },
         {
           batchId: paperBatch.id,

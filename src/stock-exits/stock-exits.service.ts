@@ -22,6 +22,11 @@ const stockExitInclude = {
   user: {
     omit: { passwordHash: true },
   },
+  healthProfessional: {
+    include: {
+      specialty: true,
+    },
+  },
 } satisfies Prisma.StockExitInclude;
 
 @Injectable()
@@ -38,6 +43,13 @@ export class StockExitsService {
       if (!batch) {
         throw new NotFoundException(
           `Stock batch ${createStockExitDto.batchId} not found`,
+        );
+      }
+
+      if (createStockExitDto.healthProfessionalId !== undefined) {
+        await this.ensureActiveHealthProfessional(
+          tx,
+          createStockExitDto.healthProfessionalId,
         );
       }
 
@@ -66,6 +78,7 @@ export class StockExitsService {
           quantity: quantityInBaseUnits,
           userId: createStockExitDto.userId,
           exitDate: new Date(createStockExitDto.exitDate),
+          healthProfessionalId: createStockExitDto.healthProfessionalId,
         },
         include: stockExitInclude,
       });
@@ -104,6 +117,16 @@ export class StockExitsService {
   async update(id: number, updateStockExitDto: UpdateStockExitDto) {
     await this.findOne(id);
 
+    if (
+      updateStockExitDto.healthProfessionalId !== undefined &&
+      updateStockExitDto.healthProfessionalId !== null
+    ) {
+      await this.ensureActiveHealthProfessional(
+        this.prisma,
+        updateStockExitDto.healthProfessionalId,
+      );
+    }
+
     return this.prisma.stockExit.update({
       where: { id },
       data: this.mapUpdateDtoToData(updateStockExitDto),
@@ -141,6 +164,34 @@ export class StockExitsService {
       data.exitDate = new Date(updateStockExitDto.exitDate);
     }
 
+    if (updateStockExitDto.healthProfessionalId !== undefined) {
+      data.healthProfessional =
+        updateStockExitDto.healthProfessionalId === null
+          ? { disconnect: true }
+          : { connect: { id: updateStockExitDto.healthProfessionalId } };
+    }
+
     return data;
+  }
+
+  private async ensureActiveHealthProfessional(
+    client: Prisma.TransactionClient | PrismaService,
+    healthProfessionalId: number,
+  ) {
+    const professional = await client.healthProfessional.findUnique({
+      where: { id: healthProfessionalId },
+    });
+
+    if (!professional) {
+      throw new NotFoundException(
+        `Health professional ${healthProfessionalId} not found`,
+      );
+    }
+
+    if (!professional.isActive) {
+      throw new BadRequestException(
+        `Health professional ${healthProfessionalId} is inactive`,
+      );
+    }
   }
 }

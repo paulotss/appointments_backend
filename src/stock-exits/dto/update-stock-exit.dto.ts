@@ -12,4 +12,12 @@ export class UpdateStockExitDto {
 
   @ApiPropertyOptional({ example: '2026-06-12' })
   exitDate?: string;
+
+  @ApiPropertyOptional({
+    example: 1,
+    nullable: true,
+    description:
+      'Profissional da saude que fez a saida. Envie null para limpar o vinculo.',
+  })
+  healthProfessionalId?: number | null;
 }
