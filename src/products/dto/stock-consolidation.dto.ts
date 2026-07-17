@@ -10,15 +10,24 @@ export class StockConsolidationDto {
 
   @ApiProperty({
     example: 80,
-    description: 'Soma de currentQuantity de todos os lotes do produto',
+    description:
+      'Soma de currentQuantity de todos os lotes abertos do produto, em unidade base',
   })
   totalQuantity!: number;
 
   @ApiProperty({
-    example: 150.5,
+    example: 1004.0,
     nullable: true,
     description:
-      'Media dos value dos 3 lotes mais recentes (por movementDate). Null se nenhum lote tiver valor.',
+      'Valor residual do estoque: soma de currentQuantity * unitCost nos lotes com custo. Null se nenhum lote tiver unitCost.',
+  })
+  totalValue!: number | null;
+
+  @ApiProperty({
+    example: 12.55,
+    nullable: true,
+    description:
+      'Media ponderada do unitCost pelo saldo (totalValue / totalQuantity). Null se nao houver valor residual.',
   })
   averagePrice!: number | null;
 
@@ -35,8 +44,23 @@ export class StockConsolidationDto {
   })
   expiredBatchesCount!: number;
 
-  @ApiProperty({ example: 50 })
+  @ApiProperty({
+    example: 50,
+    description: 'Estoque minimo em unidade base',
+  })
   minimumStock!: number;
+
+  @ApiProperty({
+    example: 'UNIT',
+    description: 'Unidade base do produto',
+  })
+  baseUnit!: string;
+
+  @ApiProperty({
+    example: 12,
+    description: 'Unidades base por caixa/embalagem',
+  })
+  unitsPerPackage!: number;
 
   @ApiProperty({
     type: StockBatchResponseDto,

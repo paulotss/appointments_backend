@@ -135,6 +135,7 @@ async function main() {
           sku: 'MED-DIP-500',
           categoryId: medicationsCategory.id,
           minimumStock: 50,
+          unitsPerPackage: 1,
           isActive: true,
         },
         {
@@ -142,6 +143,15 @@ async function main() {
           sku: 'MED-PAR-750',
           categoryId: medicationsCategory.id,
           minimumStock: 30,
+          unitsPerPackage: 1,
+          isActive: true,
+        },
+        {
+          name: 'AGULHA HIPODERMICA 25X7',
+          sku: 'MED-AGU-25X7',
+          categoryId: medicationsCategory.id,
+          minimumStock: 24,
+          unitsPerPackage: 12,
           isActive: true,
         },
         {
@@ -149,6 +159,7 @@ async function main() {
           sku: 'OFF-PAP-A4',
           categoryId: officeCategory.id,
           minimumStock: 10,
+          unitsPerPackage: 1,
           isActive: true,
         },
         {
@@ -156,6 +167,7 @@ async function main() {
           sku: 'HYG-ALC-500',
           categoryId: hygieneCategory.id,
           minimumStock: 20,
+          unitsPerPackage: 1,
           isActive: true,
         },
         {
@@ -163,6 +175,7 @@ async function main() {
           sku: 'DISC-001',
           categoryId: officeCategory.id,
           minimumStock: 0,
+          unitsPerPackage: 1,
           isActive: false,
         },
       ],
@@ -170,9 +183,10 @@ async function main() {
 
     const dipirona = products.find((product) => product.sku === 'MED-DIP-500');
     const paracetamol = products.find((product) => product.sku === 'MED-PAR-750');
+    const agulha = products.find((product) => product.sku === 'MED-AGU-25X7');
     const paperA4 = products.find((product) => product.sku === 'OFF-PAP-A4');
 
-    if (!dipirona || !paracetamol || !paperA4) {
+    if (!dipirona || !paracetamol || !agulha || !paperA4) {
       throw new Error('Failed to create required product seed references');
     }
 
@@ -183,7 +197,7 @@ async function main() {
           sectorId: pharmacySector.id,
           initialQuantity: 100,
           currentQuantity: 80,
-          value: 150.5,
+          unitCost: 150.5,
           movementDate: new Date('2026-06-01'),
           expirationDate: new Date('2027-06-01'),
           notes: 'Entrada via nota fiscal 12345',
@@ -196,9 +210,22 @@ async function main() {
           sectorId: pharmacySector.id,
           initialQuantity: 60,
           currentQuantity: 60,
-          value: 89.9,
+          unitCost: 89.9,
           movementDate: new Date('2026-06-05'),
           expirationDate: new Date('2027-03-15'),
+          userId: adminUser.id,
+          locationId: shelfA1.id,
+        },
+        {
+          productId: agulha.id,
+          sectorId: pharmacySector.id,
+          // 1 caixa de 12 unidades
+          initialQuantity: 12,
+          currentQuantity: 12,
+          unitCost: 10,
+          movementDate: new Date('2026-06-08'),
+          expirationDate: new Date('2028-01-01'),
+          notes: 'Entrada de 1 caixa (12 unidades) a R$ 120',
           userId: adminUser.id,
           locationId: shelfA1.id,
         },

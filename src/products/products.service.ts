@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { normalizeName } from '../common/normalize-name';
 import { PrismaService } from '../prisma/prisma.service';
@@ -17,6 +17,8 @@ export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
 
   create(createProductDto: CreateProductDto) {
+    this.assertValidUnitsPerPackage(createProductDto.unitsPerPackage);
+
     return this.prisma.product.create({
       data: { ...createProductDto, name: normalizeName(createProductDto.name) },
       include: { category: true },
@@ -62,6 +64,7 @@ export class ProductsService {
 
   async update(id: number, updateProductDto: UpdateProductDto) {
     await this.findOne(id, true);
+    this.assertValidUnitsPerPackage(updateProductDto.unitsPerPackage);
 
     return this.prisma.product.update({
       where: { id },
@@ -86,17 +89,26 @@ export class ProductsService {
   }
 
   private mapProductToStockConsolidation(product: ProductWithBatches) {
-    const { batchesWithStock, totalQuantity, averagePrice, expiringBatchesCount, expiredBatchesCount } =
-      this.aggregateStockBatches(product.stockBatches);
+    const {
+      batchesWithStock,
+      totalQuantity,
+      totalValue,
+      averagePrice,
+      expiringBatchesCount,
+      expiredBatchesCount,
+    } = this.aggregateStockBatches(product.stockBatches);
 
     return {
       name: product.name,
       sku: product.sku,
       totalQuantity,
+      totalValue,
       averagePrice,
       expiringBatchesCount,
       expiredBatchesCount,
       minimumStock: product.minimumStock,
+      baseUnit: product.baseUnit,
+      unitsPerPackage: product.unitsPerPackage,
       stockBatches: batchesWithStock,
     };
   }
@@ -116,14 +128,21 @@ export class ProductsService {
       0,
     );
 
-    const recentWithValue = batches
-      .filter((batch) => batch.value != null)
-      .slice(0, 3);
+    let residualValueSum = 0;
+    let residualQuantity = 0;
 
-    const averagePrice = recentWithValue.length
-      ? recentWithValue.reduce((sum, batch) => sum + Number(batch.value), 0) /
-        recentWithValue.length
-      : null;
+    for (const batch of batches) {
+      if (batch.unitCost == null) {
+        continue;
+      }
+
+      residualValueSum += batch.currentQuantity * Number(batch.unitCost);
+      residualQuantity += batch.currentQuantity;
+    }
+
+    const totalValue = residualQuantity > 0 ? residualValueSum : null;
+    const averagePrice =
+      residualQuantity > 0 ? residualValueSum / residualQuantity : null;
 
     let expiringBatchesCount = 0;
     let expiredBatchesCount = 0;
@@ -145,10 +164,17 @@ export class ProductsService {
     return {
       batchesWithStock,
       totalQuantity,
+      totalValue,
       averagePrice,
       expiringBatchesCount,
       expiredBatchesCount,
     };
+  }
+
+  private assertValidUnitsPerPackage(unitsPerPackage?: number) {
+    if (unitsPerPackage !== undefined && unitsPerPackage < 1) {
+      throw new BadRequestException('unitsPerPackage must be at least 1');
+    }
   }
 
   private startOfDay(date: Date): Date {

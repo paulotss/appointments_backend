@@ -5,6 +5,10 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { stockBatchQuantityUpdate } from '../stock-batches/stock-batch-auto-close';
+import {
+  StockUnitDto,
+  toBaseUnits,
+} from '../stock/stock-unit-conversion';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStockExitDto } from './dto/create-stock-exit.dto';
 import { UpdateStockExitDto } from './dto/update-stock-exit.dto';
@@ -28,6 +32,7 @@ export class StockExitsService {
     return this.prisma.$transaction(async (tx) => {
       const batch = await tx.stockBatch.findUnique({
         where: { id: createStockExitDto.batchId },
+        include: { product: true },
       });
 
       if (!batch) {
@@ -36,14 +41,29 @@ export class StockExitsService {
         );
       }
 
-      if (createStockExitDto.quantity > batch.currentQuantity) {
+      const unit = createStockExitDto.unit ?? StockUnitDto.UNIT;
+      let quantityInBaseUnits: number;
+
+      try {
+        quantityInBaseUnits = toBaseUnits(
+          createStockExitDto.quantity,
+          unit,
+          batch.product.unitsPerPackage,
+        );
+      } catch (error) {
+        throw new BadRequestException(
+          error instanceof Error ? error.message : 'Invalid stock unit',
+        );
+      }
+
+      if (quantityInBaseUnits > batch.currentQuantity) {
         throw new BadRequestException('Insufficient stock in batch');
       }
 
       const exit = await tx.stockExit.create({
         data: {
           batchId: createStockExitDto.batchId,
-          quantity: createStockExitDto.quantity,
+          quantity: quantityInBaseUnits,
           userId: createStockExitDto.userId,
           exitDate: new Date(createStockExitDto.exitDate),
         },
@@ -53,7 +73,7 @@ export class StockExitsService {
       await tx.stockBatch.update({
         where: { id: createStockExitDto.batchId },
         data: stockBatchQuantityUpdate(
-          batch.currentQuantity - createStockExitDto.quantity,
+          batch.currentQuantity - quantityInBaseUnits,
         ),
       });
 

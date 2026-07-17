@@ -35,6 +35,13 @@ enum CallStatus {
   @@map("call_status_enum")
 }
 
+enum StockUnit {
+  UNIT
+  BOX
+
+  @@map("stock_unit_enum")
+}
+
 model Specialty {
   id           Int           @id @default(autoincrement())
   name         String        @db.VarChar(100)
@@ -106,15 +113,17 @@ model Category {
 }
 
 model Product {
-  id           Int          @id @default(autoincrement())
-  name         String       @db.VarChar(255)
-  sku          String       @unique @db.VarChar(100)
-  isActive     Boolean      @default(true) @map("is_active")
-  categoryId   Int          @map("category_id")
-  registeredAt DateTime     @default(now()) @map("registered_at") @db.Date
-  minimumStock Int          @default(0) @map("minimum_stock")
-  category     Category     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  stockBatches StockBatch[]
+  id              Int       @id @default(autoincrement())
+  name            String    @db.VarChar(255)
+  sku             String    @unique @db.VarChar(100)
+  isActive        Boolean   @default(true) @map("is_active")
+  categoryId      Int       @map("category_id")
+  registeredAt    DateTime  @default(now()) @map("registered_at") @db.Date
+  minimumStock    Int       @default(0) @map("minimum_stock")
+  baseUnit        StockUnit @default(UNIT) @map("base_unit")
+  unitsPerPackage Int       @default(1) @map("units_per_package")
+  category        Category  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  stockBatches    StockBatch[]
 
   @@map("products")
 }
@@ -143,7 +152,7 @@ model StockBatch {
   sectorId         Int             @map("sector_id")
   initialQuantity  Int             @map("initial_quantity")
   currentQuantity  Int             @map("current_quantity")
-  value            Decimal?        @db.Decimal(10, 2)
+  unitCost         Decimal?        @map("unit_cost") @db.Decimal(10, 4)
   movementDate     DateTime        @map("movement_date") @db.Date
   expirationDate   DateTime?       @map("expiration_date") @db.Date
   notes            String?         @db.Text
