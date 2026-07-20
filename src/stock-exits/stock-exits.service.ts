@@ -5,6 +5,10 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { stockBatchQuantityUpdate } from '../stock-batches/stock-batch-auto-close';
+import {
+  StockUnitDto,
+  toBaseUnits,
+} from '../stock/stock-unit-conversion';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStockExitDto } from './dto/create-stock-exit.dto';
 import { UpdateStockExitDto } from './dto/update-stock-exit.dto';
@@ -18,6 +22,11 @@ const stockExitInclude = {
   user: {
     omit: { passwordHash: true },
   },
+  healthProfessional: {
+    include: {
+      specialty: true,
+    },
+  },
 } satisfies Prisma.StockExitInclude;
 
 @Injectable()
@@ -28,6 +37,7 @@ export class StockExitsService {
     return this.prisma.$transaction(async (tx) => {
       const batch = await tx.stockBatch.findUnique({
         where: { id: createStockExitDto.batchId },
+        include: { product: true },
       });
 
       if (!batch) {
@@ -36,16 +46,39 @@ export class StockExitsService {
         );
       }
 
-      if (createStockExitDto.quantity > batch.currentQuantity) {
+      if (createStockExitDto.healthProfessionalId !== undefined) {
+        await this.ensureActiveHealthProfessional(
+          tx,
+          createStockExitDto.healthProfessionalId,
+        );
+      }
+
+      const unit = createStockExitDto.unit ?? StockUnitDto.UNIT;
+      let quantityInBaseUnits: number;
+
+      try {
+        quantityInBaseUnits = toBaseUnits(
+          createStockExitDto.quantity,
+          unit,
+          batch.product.unitsPerPackage,
+        );
+      } catch (error) {
+        throw new BadRequestException(
+          error instanceof Error ? error.message : 'Invalid stock unit',
+        );
+      }
+
+      if (quantityInBaseUnits > batch.currentQuantity) {
         throw new BadRequestException('Insufficient stock in batch');
       }
 
       const exit = await tx.stockExit.create({
         data: {
           batchId: createStockExitDto.batchId,
-          quantity: createStockExitDto.quantity,
+          quantity: quantityInBaseUnits,
           userId: createStockExitDto.userId,
           exitDate: new Date(createStockExitDto.exitDate),
+          healthProfessionalId: createStockExitDto.healthProfessionalId,
         },
         include: stockExitInclude,
       });
@@ -53,7 +86,7 @@ export class StockExitsService {
       await tx.stockBatch.update({
         where: { id: createStockExitDto.batchId },
         data: stockBatchQuantityUpdate(
-          batch.currentQuantity - createStockExitDto.quantity,
+          batch.currentQuantity - quantityInBaseUnits,
         ),
       });
 
@@ -83,6 +116,16 @@ export class StockExitsService {
 
   async update(id: number, updateStockExitDto: UpdateStockExitDto) {
     await this.findOne(id);
+
+    if (
+      updateStockExitDto.healthProfessionalId !== undefined &&
+      updateStockExitDto.healthProfessionalId !== null
+    ) {
+      await this.ensureActiveHealthProfessional(
+        this.prisma,
+        updateStockExitDto.healthProfessionalId,
+      );
+    }
 
     return this.prisma.stockExit.update({
       where: { id },
@@ -121,6 +164,34 @@ export class StockExitsService {
       data.exitDate = new Date(updateStockExitDto.exitDate);
     }
 
+    if (updateStockExitDto.healthProfessionalId !== undefined) {
+      data.healthProfessional =
+        updateStockExitDto.healthProfessionalId === null
+          ? { disconnect: true }
+          : { connect: { id: updateStockExitDto.healthProfessionalId } };
+    }
+
     return data;
+  }
+
+  private async ensureActiveHealthProfessional(
+    client: Prisma.TransactionClient | PrismaService,
+    healthProfessionalId: number,
+  ) {
+    const professional = await client.healthProfessional.findUnique({
+      where: { id: healthProfessionalId },
+    });
+
+    if (!professional) {
+      throw new NotFoundException(
+        `Health professional ${healthProfessionalId} not found`,
+      );
+    }
+
+    if (!professional.isActive) {
+      throw new BadRequestException(
+        `Health professional ${healthProfessionalId} is inactive`,
+      );
+    }
   }
 }

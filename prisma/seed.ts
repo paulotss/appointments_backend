@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { ContactMethod, PrismaClient } from '@prisma/client';
+import { ContactMethod, CouncilType, PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { Pool } from 'pg';
 
@@ -24,6 +24,7 @@ async function main() {
     await prisma.storageLocation.deleteMany();
     await prisma.appointment.deleteMany();
     await prisma.call.deleteMany();
+    await prisma.healthProfessional.deleteMany();
     await prisma.specialty.deleteMany();
     await prisma.user.deleteMany();
 
@@ -91,6 +92,9 @@ async function main() {
     const generalClinic = specialties.find(
       (specialty) => specialty.name === 'CLINICO GERAL',
     );
+    const dermatology = specialties.find(
+      (specialty) => specialty.name === 'DERMATOLOGIA',
+    );
     const medicationsCategory = categories.find(
       (category) => category.name === 'MEDICAMENTOS',
     );
@@ -117,6 +121,7 @@ async function main() {
       !cardiology ||
       !psychology ||
       !generalClinic ||
+      !dermatology ||
       !medicationsCategory ||
       !officeCategory ||
       !hygieneCategory ||
@@ -128,6 +133,48 @@ async function main() {
       throw new Error('Failed to create required seed references');
     }
 
+    const healthProfessionals = await prisma.healthProfessional.createManyAndReturn({
+      data: [
+        {
+          name: 'DR. CARLOS MENDES',
+          specialtyId: cardiology.id,
+          councilType: CouncilType.CRM,
+          councilNumber: '123456',
+          cpf: '52998224725',
+          phone: '11988887777',
+          email: 'carlos.mendes@email.com',
+          isActive: true,
+        },
+        {
+          name: 'DRA. ANA COSTA',
+          specialtyId: generalClinic.id,
+          councilType: CouncilType.CRM,
+          councilNumber: '654321',
+          cpf: '39053344705',
+          phone: '11977776666',
+          email: 'ana.costa@email.com',
+          isActive: true,
+        },
+        {
+          name: 'ENF. PAULA LIMA',
+          specialtyId: dermatology.id,
+          councilType: CouncilType.COREN,
+          councilNumber: '98765',
+          cpf: '11144477735',
+          phone: '11966665555',
+          isActive: false,
+        },
+      ],
+    });
+
+    const cardiologist = healthProfessionals.find(
+      (professional) => professional.cpf === '52998224725',
+    );
+
+    if (!cardiologist) {
+      throw new Error('Failed to create required health professional seed references');
+    }
+
     const products = await prisma.product.createManyAndReturn({
       data: [
         {
@@ -135,6 +182,7 @@ async function main() {
           sku: 'MED-DIP-500',
           categoryId: medicationsCategory.id,
           minimumStock: 50,
+          unitsPerPackage: 1,
           isActive: true,
         },
         {
@@ -142,6 +190,15 @@ async function main() {
           sku: 'MED-PAR-750',
           categoryId: medicationsCategory.id,
           minimumStock: 30,
+          unitsPerPackage: 1,
+          isActive: true,
+        },
+        {
+          name: 'AGULHA HIPODERMICA 25X7',
+          sku: 'MED-AGU-25X7',
+          categoryId: medicationsCategory.id,
+          minimumStock: 24,
+          unitsPerPackage: 12,
           isActive: true,
         },
         {
@@ -149,6 +206,7 @@ async function main() {
           sku: 'OFF-PAP-A4',
           categoryId: officeCategory.id,
           minimumStock: 10,
+          unitsPerPackage: 1,
           isActive: true,
         },
         {
@@ -156,6 +214,7 @@ async function main() {
           sku: 'HYG-ALC-500',
           categoryId: hygieneCategory.id,
           minimumStock: 20,
+          unitsPerPackage: 1,
           isActive: true,
         },
         {
@@ -163,6 +222,7 @@ async function main() {
           sku: 'DISC-001',
           categoryId: officeCategory.id,
           minimumStock: 0,
+          unitsPerPackage: 1,
           isActive: false,
         },
       ],
@@ -170,9 +230,10 @@ async function main() {
 
     const dipirona = products.find((product) => product.sku === 'MED-DIP-500');
     const paracetamol = products.find((product) => product.sku === 'MED-PAR-750');
+    const agulha = products.find((product) => product.sku === 'MED-AGU-25X7');
     const paperA4 = products.find((product) => product.sku === 'OFF-PAP-A4');
 
-    if (!dipirona || !paracetamol || !paperA4) {
+    if (!dipirona || !paracetamol || !agulha || !paperA4) {
       throw new Error('Failed to create required product seed references');
     }
 
@@ -183,7 +244,7 @@ async function main() {
           sectorId: pharmacySector.id,
           initialQuantity: 100,
           currentQuantity: 80,
-          value: 150.5,
+          unitCost: 150.5,
           movementDate: new Date('2026-06-01'),
           expirationDate: new Date('2027-06-01'),
           notes: 'Entrada via nota fiscal 12345',
@@ -196,9 +257,22 @@ async function main() {
           sectorId: pharmacySector.id,
           initialQuantity: 60,
           currentQuantity: 60,
-          value: 89.9,
+          unitCost: 89.9,
           movementDate: new Date('2026-06-05'),
           expirationDate: new Date('2027-03-15'),
+          userId: adminUser.id,
+          locationId: shelfA1.id,
+        },
+        {
+          productId: agulha.id,
+          sectorId: pharmacySector.id,
+          // 1 caixa de 12 unidades
+          initialQuantity: 12,
+          currentQuantity: 12,
+          unitCost: 10,
+          movementDate: new Date('2026-06-08'),
+          expirationDate: new Date('2028-01-01'),
+          notes: 'Entrada de 1 caixa (12 unidades) a R$ 120',
           userId: adminUser.id,
           locationId: shelfA1.id,
         },
@@ -230,6 +304,7 @@ async function main() {
           quantity: 20,
           userId: attendantUser.id,
           exitDate: new Date('2026-06-08'),
+          healthProfessionalId: cardiologist.id,
         },
         {
           batchId: paperBatch.id,

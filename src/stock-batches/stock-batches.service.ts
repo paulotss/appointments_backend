@@ -1,9 +1,16 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  StockUnitDto,
+  toBaseUnits,
+  toUnitCost,
+  ValueMode,
+} from '../stock/stock-unit-conversion';
 import { stockBatchQuantityUpdate } from './stock-batch-auto-close';
 import { stockBatchInclude } from './stock-batch.include';
 import { CreateStockBatchDto } from './dto/create-stock-batch.dto';
@@ -14,17 +21,48 @@ import { StockBatchListStatus } from './stock-batch-list-status.enum';
 export class StockBatchesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(createStockBatchDto: CreateStockBatchDto) {
-    const currentQuantity =
-      createStockBatchDto.currentQuantity ?? createStockBatchDto.initialQuantity;
+  async create(createStockBatchDto: CreateStockBatchDto) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: createStockBatchDto.productId },
+    });
+
+    if (!product) {
+      throw new NotFoundException(
+        `Product ${createStockBatchDto.productId} not found`,
+      );
+    }
+
+    const unit = createStockBatchDto.unit ?? StockUnitDto.UNIT;
+    const valueMode =
+      createStockBatchDto.valueMode ?? ValueMode.PER_ENTRY_UNIT;
+
+    const initialQuantity = this.convertQuantity(
+      createStockBatchDto.initialQuantity,
+      unit,
+      product.unitsPerPackage,
+    );
+    const currentQuantity = this.convertQuantity(
+      createStockBatchDto.currentQuantity ?? createStockBatchDto.initialQuantity,
+      unit,
+      product.unitsPerPackage,
+    );
+    const unitCost =
+      createStockBatchDto.value !== undefined
+        ? this.convertUnitCost(
+            createStockBatchDto.value,
+            valueMode,
+            unit,
+            product.unitsPerPackage,
+          )
+        : undefined;
 
     return this.prisma.stockBatch.create({
       data: {
         productId: createStockBatchDto.productId,
         sectorId: createStockBatchDto.sectorId,
-        initialQuantity: createStockBatchDto.initialQuantity,
+        initialQuantity,
         ...stockBatchQuantityUpdate(currentQuantity),
-        value: createStockBatchDto.value,
+        unitCost,
         movementDate: new Date(createStockBatchDto.movementDate),
         expirationDate: createStockBatchDto.expirationDate
           ? new Date(createStockBatchDto.expirationDate)
@@ -75,11 +113,23 @@ export class StockBatchesService {
   }
 
   async update(id: number, updateStockBatchDto: UpdateStockBatchDto) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
+    const productId =
+      updateStockBatchDto.productId ?? existing.productId;
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Product ${productId} not found`);
+    }
 
     return this.prisma.stockBatch.update({
       where: { id },
-      data: this.mapUpdateDtoToData(updateStockBatchDto),
+      data: this.mapUpdateDtoToData(
+        updateStockBatchDto,
+        product.unitsPerPackage,
+      ),
       include: stockBatchInclude,
     });
   }
@@ -95,8 +145,12 @@ export class StockBatchesService {
 
   private mapUpdateDtoToData(
     updateStockBatchDto: UpdateStockBatchDto,
+    unitsPerPackage: number,
   ): Prisma.StockBatchUpdateInput {
     const data: Prisma.StockBatchUpdateInput = {};
+    const unit = updateStockBatchDto.unit ?? StockUnitDto.UNIT;
+    const valueMode =
+      updateStockBatchDto.valueMode ?? ValueMode.PER_ENTRY_UNIT;
 
     if (updateStockBatchDto.productId !== undefined) {
       data.product = { connect: { id: updateStockBatchDto.productId } };
@@ -115,18 +169,35 @@ export class StockBatchesService {
     }
 
     if (updateStockBatchDto.initialQuantity !== undefined) {
-      data.initialQuantity = updateStockBatchDto.initialQuantity;
+      data.initialQuantity = this.convertQuantity(
+        updateStockBatchDto.initialQuantity,
+        unit,
+        unitsPerPackage,
+      );
     }
 
     if (updateStockBatchDto.currentQuantity !== undefined) {
       Object.assign(
         data,
-        stockBatchQuantityUpdate(updateStockBatchDto.currentQuantity),
+        stockBatchQuantityUpdate(
+          this.convertQuantity(
+            updateStockBatchDto.currentQuantity,
+            unit,
+            unitsPerPackage,
+          ),
+        ),
       );
     }
 
-    if (updateStockBatchDto.value !== undefined) {
-      data.value = updateStockBatchDto.value;
+    if (updateStockBatchDto.unitCost !== undefined) {
+      data.unitCost = updateStockBatchDto.unitCost;
+    } else if (updateStockBatchDto.value !== undefined) {
+      data.unitCost = this.convertUnitCost(
+        updateStockBatchDto.value,
+        valueMode,
+        unit,
+        unitsPerPackage,
+      );
     }
 
     if (updateStockBatchDto.movementDate !== undefined) {
@@ -146,5 +217,34 @@ export class StockBatchesService {
     }
 
     return data;
+  }
+
+  private convertQuantity(
+    quantity: number,
+    unit: StockUnitDto,
+    unitsPerPackage: number,
+  ): number {
+    try {
+      return toBaseUnits(quantity, unit, unitsPerPackage);
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'Invalid stock unit',
+      );
+    }
+  }
+
+  private convertUnitCost(
+    value: number,
+    valueMode: ValueMode,
+    unit: StockUnitDto,
+    unitsPerPackage: number,
+  ): number {
+    try {
+      return toUnitCost(value, valueMode, unit, unitsPerPackage);
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'Invalid stock unit',
+      );
+    }
   }
 }

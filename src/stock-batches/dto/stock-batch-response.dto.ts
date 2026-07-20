@@ -21,6 +21,15 @@ export class StockBatchProductSummaryDto {
 
   @ApiProperty({ example: 50 })
   minimumStock!: number;
+
+  @ApiProperty({ example: 'UNIT', description: 'Unidade base do estoque' })
+  baseUnit!: string;
+
+  @ApiProperty({
+    example: 12,
+    description: 'Quantidade de unidades base por caixa/embalagem',
+  })
+  unitsPerPackage!: number;
 }
 
 export class StockBatchSectorSummaryDto {
@@ -72,14 +81,24 @@ export class StockBatchResponseDto {
   @ApiProperty({ example: 1 })
   sectorId!: number;
 
-  @ApiProperty({ example: 100 })
+  @ApiProperty({
+    example: 100,
+    description: 'Quantidade inicial em unidade base',
+  })
   initialQuantity!: number;
 
-  @ApiProperty({ example: 80 })
+  @ApiProperty({
+    example: 80,
+    description: 'Saldo atual em unidade base',
+  })
   currentQuantity!: number;
 
-  @ApiPropertyOptional({ example: 150.5, nullable: true })
-  value?: number | null;
+  @ApiPropertyOptional({
+    example: 12.5417,
+    nullable: true,
+    description: 'Custo por unidade base',
+  })
+  unitCost?: number | null;
 
   @ApiProperty({ example: '2026-06-01' })
   movementDate!: string;
