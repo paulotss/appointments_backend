@@ -83,10 +83,12 @@ model User {
   name                     String        @db.VarChar(150)
   passwordHash             String        @map("password_hash") @db.VarChar(255)
   usernameLogin            String        @unique @map("username_login") @db.VarChar(100)
+  email                    String?       @unique @map("email") @db.VarChar(150)
   isAdmin                  Boolean       @default(false) @map("is_admin")
   extension                Int?          @unique @map("extension")
   attendedAppointments     Appointment[] @relation("AttendantAppointments")
   calls                    Call[]
+  messages                 Message[]
   stockBatches             StockBatch[]
   stockExits               StockExit[]
 
@@ -110,6 +112,22 @@ model Call {
   @@map("calls")
 }
 
+model Message {
+  id            Int              @id @default(autoincrement())
+  finishAt      DateTime         @map("finish_at") @db.Timestamp(3)
+  recipient     String           @db.VarChar(30)
+  userId        Int?             @map("user_id")
+  note          String?          @db.Text
+  recordStatus  CallRecordStatus @default(pending) @map("record_status")
+  interactionId String           @map("interaction_id") @db.VarChar(64)
+  content       Json?
+
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  appointment Appointment?
+
+  @@map("messages")
+}
+
 model Appointment {
   id             Int           @id @default(autoincrement())
   date           DateTime      @db.Timestamp(3)
@@ -123,10 +141,12 @@ model Appointment {
   notes          String?
   attendantId    Int?          @map("attendant_id")
   callId         Int?          @unique @map("call_id")
+  messageId      Int?          @unique @map("message_id")
 
   specialty Specialty? @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
   attendant User?      @relation("AttendantAppointments", fields: [attendantId], references: [id], onDelete: SetNull)
   call      Call?      @relation(fields: [callId], references: [id], onDelete: SetNull)
+  message   Message?   @relation(fields: [messageId], references: [id], onDelete: SetNull)
 
   @@map("appointments")
 }

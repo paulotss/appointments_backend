@@ -22,6 +22,7 @@ Crie o arquivo `.env` na raiz do projeto (se ainda nao existir), com o formato:
 DATABASE_URL="postgresql://appointments_dev:appointments_dev@localhost:5432/appointments_dev?schema=public"
 JWT_SECRET="appointments_local_secret_change_me"
 JWT_EXPIRES_IN="1d"
+GPT_MAKER_TOKEN="seu_token_gpt_maker"
 ```
 
 ## 2) Preparar banco de dados (sem Docker)
@@ -95,6 +96,19 @@ npm run test
 npm run test:e2e
 npm run test:cov
 ```
+
+## Messages (WhatsApp / GPT Maker)
+
+Webhook de conversa finalizada: `POST /api/messages`.
+
+O body segue o payload do GPT Maker (`interactionId`, `recipient`, `finishAt`, `humanEmail`, ...). A API busca o historico em `GET https://api.gptmaker.ai/v2/interaction/{interactionId}/messages` usando `GPT_MAKER_TOKEN` e grava o JSON em `content`. Cada POST cria um novo registro.
+
+| Metodo | Rota | Descricao |
+|--------|------|-----------|
+| `POST` | `/messages` | Registrar conversa (webhook) |
+| `GET` | `/messages` | Listar conversas |
+| `GET` | `/messages/:id` | Buscar por id |
+| `PATCH` | `/messages/:id` | Atualizar `recordStatus` / `note` |
 
 ## Modulo de estoque
 
