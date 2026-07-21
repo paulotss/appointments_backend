@@ -17,4 +17,7 @@ export class UpdateUserDto {
 
   @ApiPropertyOptional({ example: 2002, nullable: true })
   extension?: number | null;
+
+  @ApiPropertyOptional({ example: 'maria.santos@example.com', nullable: true })
+  email?: string | null;
 }

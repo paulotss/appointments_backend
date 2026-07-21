@@ -17,4 +17,7 @@ export class CreateUserDto {
 
   @ApiPropertyOptional({ example: 2001, nullable: true })
   extension?: number | null;
+
+  @ApiPropertyOptional({ example: 'maria.silva@example.com', nullable: true })
+  email?: string | null;
 }

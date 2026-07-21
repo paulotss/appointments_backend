@@ -1,6 +1,11 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { ContactMethod, CouncilType, PrismaClient } from '@prisma/client';
+import {
+  CallRecordStatus,
+  ContactMethod,
+  CouncilType,
+  PrismaClient,
+} from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { Pool } from 'pg';
 
@@ -23,6 +28,7 @@ async function main() {
     await prisma.sector.deleteMany();
     await prisma.storageLocation.deleteMany();
     await prisma.appointment.deleteMany();
+    await prisma.message.deleteMany();
     await prisma.call.deleteMany();
     await prisma.healthProfessional.deleteMany();
     await prisma.specialty.deleteMany();
@@ -38,12 +44,14 @@ async function main() {
         {
           name: 'Administrador',
           usernameLogin: 'admin',
+          email: 'admin@appointments.local',
           passwordHash: adminPasswordHash,
           isAdmin: true,
         },
         {
           name: 'Atendente',
           usernameLogin: 'atendente',
+          email: 'atendente@appointments.local',
           passwordHash: userPasswordHash,
           isAdmin: false,
         },
@@ -315,6 +323,93 @@ async function main() {
       ],
     });
 
+    const messages = await prisma.message.createManyAndReturn({
+      data: [
+        {
+          finishAt: new Date('2026-07-20T19:57:47.246Z'),
+          recipient: '5561999990001',
+          name: 'Maria Silva',
+          userId: attendantUser.id,
+          recordStatus: CallRecordStatus.registered,
+          interactionId: 'SEED_INTERACTION_001',
+          note: 'Agendamento confirmado via WhatsApp',
+          content: [
+            {
+              id: 'msg-1',
+              role: 'user',
+              type: 'text',
+              text: 'Ola, gostaria de agendar uma consulta',
+              time: 1721490000,
+            },
+            {
+              id: 'msg-2',
+              role: 'assistant',
+              type: 'text',
+              text: 'Claro! Qual especialidade voce precisa?',
+              time: 1721490060,
+            },
+            {
+              id: 'msg-3',
+              role: 'user',
+              type: 'text',
+              text: 'Clinico geral, pela manha',
+              time: 1721490120,
+            },
+          ],
+        },
+        {
+          finishAt: new Date('2026-07-21T14:30:00.000Z'),
+          recipient: '5561999990002',
+          name: 'Joao Santos',
+          userId: attendantUser.id,
+          recordStatus: CallRecordStatus.pending,
+          interactionId: 'SEED_INTERACTION_002',
+          content: [
+            {
+              id: 'msg-1',
+              role: 'user',
+              type: 'text',
+              text: 'Preciso remarcar minha consulta de cardiologia',
+              time: 1721560000,
+            },
+            {
+              id: 'msg-2',
+              role: 'assistant',
+              type: 'text',
+              text: 'Posso ajudar com o remanejamento. Qual a melhor data?',
+              time: 1721560100,
+            },
+          ],
+        },
+        {
+          finishAt: new Date('2026-07-21T16:10:00.000Z'),
+          recipient: '5561999990003',
+          name: 'Ana Pereira',
+          userId: null,
+          recordStatus: CallRecordStatus.cancelled,
+          interactionId: 'SEED_INTERACTION_003',
+          note: 'Cliente encerrou sem concluir o atendimento',
+          content: [
+            {
+              id: 'msg-1',
+              role: 'user',
+              type: 'text',
+              text: 'Quero informacoes sobre psicologia',
+              time: 1721568000,
+            },
+          ],
+        },
+      ],
+    });
+
+    const mariaMessage = messages.find(
+      (message) => message.interactionId === 'SEED_INTERACTION_001',
+    );
+
+    if (!mariaMessage) {
+      throw new Error('Failed to create required message seed references');
+    }
+
     await prisma.appointment.createMany({
       data: [
         {
@@ -328,6 +423,7 @@ async function main() {
           specialtyId: generalClinic.id,
           notes: 'Paciente prefere horario da manha',
           attendantId: adminUser.id,
+          messageId: mariaMessage.id,
         },
         {
           date: new Date('2026-03-27'),

@@ -13,6 +13,21 @@ const appointmentCallInclude = {
   },
 } as const;
 
+const appointmentMessageInclude = {
+  include: {
+    user: {
+      omit: { passwordHash: true } as const,
+    },
+  },
+} as const;
+
+const appointmentInclude = {
+  specialty: true,
+  attendant: true,
+  call: appointmentCallInclude,
+  message: appointmentMessageInclude,
+} as const;
+
 @Injectable()
 export class AppointmentsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -20,21 +35,13 @@ export class AppointmentsService {
   create(createAppointmentDto: CreateAppointmentDto) {
     return this.prisma.appointment.create({
       data: this.mapCreateDtoToData(createAppointmentDto),
-      include: {
-        specialty: true,
-        attendant: true,
-        call: appointmentCallInclude,
-      },
+      include: appointmentInclude,
     });
   }
 
   findAll() {
     return this.prisma.appointment.findMany({
-      include: {
-        specialty: true,
-        attendant: true,
-        call: appointmentCallInclude,
-      },
+      include: appointmentInclude,
       orderBy: { id: 'asc' },
     });
   }
@@ -42,11 +49,7 @@ export class AppointmentsService {
   async findOne(id: number) {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id },
-      include: {
-        specialty: true,
-        attendant: true,
-        call: appointmentCallInclude,
-      },
+      include: appointmentInclude,
     });
 
     if (!appointment) {
@@ -62,11 +65,7 @@ export class AppointmentsService {
     return this.prisma.appointment.update({
       where: { id },
       data: this.mapUpdateDtoToData(updateAppointmentDto),
-      include: {
-        specialty: true,
-        attendant: true,
-        call: appointmentCallInclude,
-      },
+      include: appointmentInclude,
     });
   }
 
@@ -90,6 +89,7 @@ export class AppointmentsService {
       notes: dto.notes,
       attendantId: dto.attendantId,
       callId: dto.callId ?? undefined,
+      messageId: dto.messageId ?? undefined,
     };
   }
 
@@ -111,6 +111,7 @@ export class AppointmentsService {
       notes: dto.notes,
       attendantId: dto.attendantId,
       callId: dto.callId,
+      messageId: dto.messageId,
     };
   }
 }

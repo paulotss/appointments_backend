@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { CallsModule } from './calls/calls.module';
 import { CategoriesModule } from './categories/categories.module';
 import { HealthProfessionalsModule } from './health-professionals/health-professionals.module';
+import { MessagesModule } from './messages/messages.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
 import { SectorsModule } from './sectors/sectors.module';
@@ -23,6 +24,7 @@ import { UsersModule } from './users/users.module';
     HealthProfessionalsModule,
     AppointmentsModule,
     CallsModule,
+    MessagesModule,
     AuthModule,
     CategoriesModule,
     ProductsModule,

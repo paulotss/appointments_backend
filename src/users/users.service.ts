@@ -24,6 +24,7 @@ export class UsersService {
           usernameLogin: createUserDto.usernameLogin,
           isAdmin: createUserDto.isAdmin ?? false,
           extension: createUserDto.extension,
+          email: createUserDto.email,
         },
         omit: { passwordHash: true },
       });
@@ -113,6 +114,9 @@ export class UsersService {
       const fields = Array.isArray(target) ? target : target != null ? [target] : [];
       if (fields.includes('extension')) {
         throw new BadRequestException('extension already in use');
+      }
+      if (fields.includes('email')) {
+        throw new BadRequestException('email already in use');
       }
       throw new BadRequestException('usernameLogin already exists');
     }
