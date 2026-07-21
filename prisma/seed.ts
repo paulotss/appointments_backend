@@ -328,6 +328,7 @@ async function main() {
         {
           finishAt: new Date('2026-07-20T19:57:47.246Z'),
           recipient: '5561999990001',
+          name: 'Maria Silva',
           userId: attendantUser.id,
           recordStatus: CallRecordStatus.registered,
           interactionId: 'SEED_INTERACTION_001',
@@ -359,6 +360,7 @@ async function main() {
         {
           finishAt: new Date('2026-07-21T14:30:00.000Z'),
           recipient: '5561999990002',
+          name: 'Joao Santos',
           userId: attendantUser.id,
           recordStatus: CallRecordStatus.pending,
           interactionId: 'SEED_INTERACTION_002',
@@ -382,6 +384,7 @@ async function main() {
         {
           finishAt: new Date('2026-07-21T16:10:00.000Z'),
           recipient: '5561999990003',
+          name: 'Ana Pereira',
           userId: null,
           recordStatus: CallRecordStatus.cancelled,
           interactionId: 'SEED_INTERACTION_003',

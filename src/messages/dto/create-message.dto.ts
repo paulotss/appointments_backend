@@ -8,6 +8,9 @@ export class CreateMessageDto {
   @ApiProperty({ example: '556192896035' })
   recipient!: string;
 
+  @ApiProperty({ example: 'Adivany Maria Viterbo dos Santos' })
+  name!: string;
+
   @ApiProperty({ example: '2026-07-20T19:57:47.246+00:00' })
   finishAt!: string;
 

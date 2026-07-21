@@ -116,6 +116,7 @@ model Message {
   id            Int              @id @default(autoincrement())
   finishAt      DateTime         @map("finish_at") @db.Timestamp(3)
   recipient     String           @db.VarChar(30)
+  name          String           @db.VarChar(150)
   userId        Int?             @map("user_id")
   note          String?          @db.Text
   recordStatus  CallRecordStatus @default(pending) @map("record_status")

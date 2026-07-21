@@ -47,6 +47,7 @@ export class MessagesService {
       data: {
         finishAt: new Date(createMessageDto.finishAt),
         recipient: createMessageDto.recipient,
+        name: createMessageDto.name,
         interactionId: createMessageDto.interactionId,
         content: content ?? Prisma.JsonNull,
         recordStatus,
