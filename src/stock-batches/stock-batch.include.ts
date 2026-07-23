@@ -4,6 +4,7 @@ export const stockBatchInclude = {
   product: true,
   sector: true,
   location: true,
+  supplier: true,
   user: {
     omit: { passwordHash: true },
   },

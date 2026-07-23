@@ -11,6 +11,9 @@ export class CreateStockBatchDto {
   @ApiProperty({ example: 1 })
   sectorId!: number;
 
+  @ApiProperty({ example: 1 })
+  supplierId!: number;
+
   @ApiProperty({
     example: 100,
     description:

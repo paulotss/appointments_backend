@@ -23,6 +23,7 @@ async function main() {
   try {
     await prisma.stockExit.deleteMany();
     await prisma.stockBatch.deleteMany();
+    await prisma.supplier.deleteMany();
     await prisma.product.deleteMany();
     await prisma.category.deleteMany();
     await prisma.sector.deleteMany();
@@ -245,11 +246,43 @@ async function main() {
       throw new Error('Failed to create required product seed references');
     }
 
+    const suppliers = await prisma.supplier.createManyAndReturn({
+      data: [
+        {
+          legalName: 'Distribuidora Farma Brasil LTDA',
+          tradeName: 'Farma Brasil',
+          cnpj: '12345678000199',
+          phone: '1133334444',
+          email: 'contato@farmabrasil.local',
+          website: 'https://farmabrasil.local',
+        },
+        {
+          legalName: 'Comercial Papelaria Norte ME',
+          tradeName: 'Papelaria Norte',
+          cnpj: '98765432000188',
+          phone: '11988887777',
+          email: 'vendas@papelarianorte.local',
+        },
+      ],
+    });
+
+    const farmaBrasil = suppliers.find(
+      (supplier) => supplier.cnpj === '12345678000199',
+    );
+    const papelariaNorte = suppliers.find(
+      (supplier) => supplier.cnpj === '98765432000188',
+    );
+
+    if (!farmaBrasil || !papelariaNorte) {
+      throw new Error('Failed to create required supplier seed references');
+    }
+
     const batches = await prisma.stockBatch.createManyAndReturn({
       data: [
         {
           productId: dipirona.id,
           sectorId: pharmacySector.id,
+          supplierId: farmaBrasil.id,
           initialQuantity: 100,
           currentQuantity: 80,
           unitCost: 150.5,
@@ -263,6 +296,7 @@ async function main() {
         {
           productId: paracetamol.id,
           sectorId: pharmacySector.id,
+          supplierId: farmaBrasil.id,
           initialQuantity: 60,
           currentQuantity: 60,
           unitCost: 89.9,
@@ -274,6 +308,7 @@ async function main() {
         {
           productId: agulha.id,
           sectorId: pharmacySector.id,
+          supplierId: farmaBrasil.id,
           // 1 caixa de 12 unidades
           initialQuantity: 12,
           currentQuantity: 12,
@@ -287,6 +322,7 @@ async function main() {
         {
           productId: paperA4.id,
           sectorId: warehouseSector.id,
+          supplierId: papelariaNorte.id,
           initialQuantity: 25,
           currentQuantity: 20,
           movementDate: new Date('2026-06-10'),

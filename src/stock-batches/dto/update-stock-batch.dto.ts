@@ -11,6 +11,9 @@ export class UpdateStockBatchDto {
   @ApiPropertyOptional({ example: 1 })
   sectorId?: number;
 
+  @ApiPropertyOptional({ example: 1 })
+  supplierId?: number;
+
   @ApiPropertyOptional({
     example: 100,
     description:

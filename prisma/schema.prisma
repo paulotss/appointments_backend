@@ -195,10 +195,24 @@ model StorageLocation {
   @@map("storage_locations")
 }
 
+model Supplier {
+  id           Int          @id @default(autoincrement())
+  legalName    String       @map("legal_name") @db.VarChar(255)
+  tradeName    String       @map("trade_name") @db.VarChar(255)
+  cnpj         String       @unique @db.VarChar(18)
+  phone        String       @db.VarChar(20)
+  email        String       @db.VarChar(255)
+  website      String?      @db.VarChar(255)
+  stockBatches StockBatch[]
+
+  @@map("suppliers")
+}
+
 model StockBatch {
   id               Int             @id @default(autoincrement())
   productId        Int             @map("product_id")
   sectorId         Int             @map("sector_id")
+  supplierId       Int             @map("supplier_id")
   initialQuantity  Int             @map("initial_quantity")
   currentQuantity  Int             @map("current_quantity")
   unitCost         Decimal?        @map("unit_cost") @db.Decimal(10, 4)
@@ -211,6 +225,7 @@ model StockBatch {
   isClosed         Boolean         @default(false) @map("is_closed")
   product          Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
   sector           Sector          @relation(fields: [sectorId], references: [id], onDelete: Restrict)
+  supplier         Supplier        @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   user             User            @relation(fields: [userId], references: [id], onDelete: Restrict)
   location         StorageLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
   stockExits       StockExit[]

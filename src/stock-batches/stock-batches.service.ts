@@ -32,6 +32,16 @@ export class StockBatchesService {
       );
     }
 
+    const supplier = await this.prisma.supplier.findUnique({
+      where: { id: createStockBatchDto.supplierId },
+    });
+
+    if (!supplier) {
+      throw new NotFoundException(
+        `Supplier ${createStockBatchDto.supplierId} not found`,
+      );
+    }
+
     const unit = createStockBatchDto.unit ?? StockUnitDto.UNIT;
     const valueMode =
       createStockBatchDto.valueMode ?? ValueMode.PER_ENTRY_UNIT;
@@ -60,6 +70,7 @@ export class StockBatchesService {
       data: {
         productId: createStockBatchDto.productId,
         sectorId: createStockBatchDto.sectorId,
+        supplierId: createStockBatchDto.supplierId,
         initialQuantity,
         ...stockBatchQuantityUpdate(currentQuantity),
         unitCost,
@@ -158,6 +169,10 @@ export class StockBatchesService {
 
     if (updateStockBatchDto.sectorId !== undefined) {
       data.sector = { connect: { id: updateStockBatchDto.sectorId } };
+    }
+
+    if (updateStockBatchDto.supplierId !== undefined) {
+      data.supplier = { connect: { id: updateStockBatchDto.supplierId } };
     }
 
     if (updateStockBatchDto.locationId !== undefined) {

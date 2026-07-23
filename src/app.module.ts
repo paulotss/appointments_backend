@@ -14,6 +14,7 @@ import { SpecialtiesModule } from './specialties/specialties.module';
 import { StockBatchesModule } from './stock-batches/stock-batches.module';
 import { StockExitsModule } from './stock-exits/stock-exits.module';
 import { StorageLocationsModule } from './storage-locations/storage-locations.module';
+import { SuppliersModule } from './suppliers/suppliers.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -30,6 +31,7 @@ import { UsersModule } from './users/users.module';
     ProductsModule,
     SectorsModule,
     StorageLocationsModule,
+    SuppliersModule,
     StockBatchesModule,
     StockExitsModule,
   ],
