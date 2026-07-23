@@ -71,6 +71,29 @@ export class StockBatchUserSummaryDto {
   extension?: number | null;
 }
 
+export class StockBatchSupplierSummaryDto {
+  @ApiProperty({ example: 1 })
+  id!: number;
+
+  @ApiProperty({ example: 'Distribuidora Farma Brasil LTDA' })
+  legalName!: string;
+
+  @ApiProperty({ example: 'Farma Brasil' })
+  tradeName!: string;
+
+  @ApiProperty({ example: '12345678000199' })
+  cnpj!: string;
+
+  @ApiProperty({ example: '1133334444' })
+  phone!: string;
+
+  @ApiProperty({ example: 'contato@farmabrasil.local' })
+  email!: string;
+
+  @ApiPropertyOptional({ example: 'https://farmabrasil.local', nullable: true })
+  website?: string | null;
+}
+
 export class StockBatchResponseDto {
   @ApiProperty({ example: 1 })
   id!: number;
@@ -80,6 +103,9 @@ export class StockBatchResponseDto {
 
   @ApiProperty({ example: 1 })
   sectorId!: number;
+
+  @ApiProperty({ example: 1 })
+  supplierId!: number;
 
   @ApiProperty({
     example: 100,
@@ -136,6 +162,9 @@ export class StockBatchResponseDto {
 
   @ApiProperty({ type: StockBatchLocationSummaryDto })
   location!: StockBatchLocationSummaryDto;
+
+  @ApiProperty({ type: StockBatchSupplierSummaryDto })
+  supplier!: StockBatchSupplierSummaryDto;
 
   @ApiProperty({ type: StockBatchUserSummaryDto })
   user!: StockBatchUserSummaryDto;
