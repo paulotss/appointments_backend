@@ -160,6 +160,12 @@ model Appointment {
   call      Call?      @relation(fields: [callId], references: [id], onDelete: SetNull)
   message   Message?   @relation(fields: [messageId], references: [id], onDelete: SetNull)
 
+  @@index([date])
+  @@index([attendantId, date])
+  @@index([specialtyId, date])
+  @@index([contactMethod, date])
+  @@index([scheduled, date])
+  @@index([firstTime, date])
   @@map("appointments")
 }
 

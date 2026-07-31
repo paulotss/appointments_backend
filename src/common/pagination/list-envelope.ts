@@ -14,10 +14,10 @@ export type RecordStatusCounts = {
   total: number;
 };
 
-export type ListEnvelope<T> = {
+export type ListEnvelope<T, C = RecordStatusCounts> = {
   data: T[];
   meta: ListMeta;
-  counts: RecordStatusCounts;
+  counts?: C;
 };
 
 export function buildListMeta(

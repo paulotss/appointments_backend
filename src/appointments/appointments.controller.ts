@@ -7,10 +7,21 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { AppointmentsService } from './appointments.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
+import { ListAppointmentsQueryDto } from './dto/list-appointments-query.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 
 @ApiTags('appointments')
@@ -25,9 +36,30 @@ export class AppointmentsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Listar agendamentos' })
-  findAll() {
-    return this.appointmentsService.findAll();
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({
+    summary: 'Listar agendamentos (filtrado, paginado, com counts)',
+  })
+  findAll(
+    @Query() query: ListAppointmentsQueryDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.appointmentsService.findAll(query, user);
+  }
+
+  @Get('export')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({
+    summary:
+      'Exportar agendamentos filtrados (JSON array, máx. 10.000; mesmos filtros da listagem, sem page/limit)',
+  })
+  export(
+    @Query() query: ListAppointmentsQueryDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.appointmentsService.exportAll(query, user);
   }
 
   @Get(':id')
