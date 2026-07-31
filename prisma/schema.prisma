@@ -109,6 +109,12 @@ model Call {
   user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   appointment Appointment?
 
+  @@index([receivedAt])
+  @@index([recordStatus])
+  @@index([userId])
+  @@index([status])
+  @@index([receivedAt, recordStatus])
+  @@index([userId, receivedAt])
   @@map("calls")
 }
 
@@ -126,6 +132,11 @@ model Message {
   user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   appointment Appointment?
 
+  @@index([finishAt])
+  @@index([recordStatus])
+  @@index([userId])
+  @@index([finishAt, recordStatus])
+  @@index([userId, finishAt])
   @@map("messages")
 }
 

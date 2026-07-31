@@ -6,10 +6,21 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CallsService } from './calls.service';
 import { CreateCallDto } from './dto/create-call.dto';
+import { ListCallsQueryDto } from './dto/list-calls-query.dto';
 import { UpdateCallDto } from './dto/update-call.dto';
 
 @ApiTags('calls')
@@ -24,9 +35,16 @@ export class CallsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Listar ligações' })
-  findAll() {
-    return this.callsService.findAll();
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({
+    summary: 'Listar ligações (filtrado, paginado, com counts)',
+  })
+  findAll(
+    @Query() query: ListCallsQueryDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.callsService.findAll(query, user);
   }
 
   @Get(':id')
