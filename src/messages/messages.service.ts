@@ -1,12 +1,24 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { CallRecordStatus, Prisma } from '@prisma/client';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import {
+  endOfDaySaoPaulo,
+  startOfDaySaoPaulo,
+} from '../common/datetime/sao-paulo-day-bounds';
+import {
+  buildListMeta,
+  ListEnvelope,
+  mapRecordStatusCounts,
+} from '../common/pagination/list-envelope';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMessageDto } from './dto/create-message.dto';
+import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 
 const userInclude = {
@@ -58,11 +70,49 @@ export class MessagesService {
     });
   }
 
-  findAll() {
-    return this.prisma.message.findMany({
-      include: { user: userInclude, appointment: messageAppointmentInclude },
-      orderBy: { finishAt: 'desc' },
-    });
+  async findAll(
+    query: ListMessagesQueryDto,
+    currentUser: JwtPayload,
+  ): Promise<
+    ListEnvelope<
+      Prisma.MessageGetPayload<{
+        omit: { content: true };
+        include: {
+          user: typeof userInclude;
+          appointment: typeof messageAppointmentInclude;
+        };
+      }>
+    >
+  > {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 50;
+    const { where, whereWithoutRecordStatus } = this.buildListWhere(
+      query,
+      currentUser,
+    );
+
+    const [data, total, groups] = await Promise.all([
+      this.prisma.message.findMany({
+        where,
+        omit: { content: true },
+        include: { user: userInclude, appointment: messageAppointmentInclude },
+        orderBy: { finishAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.message.count({ where }),
+      this.prisma.message.groupBy({
+        by: ['recordStatus'],
+        where: whereWithoutRecordStatus,
+        _count: { _all: true },
+      }),
+    ]);
+
+    return {
+      data,
+      meta: buildListMeta(page, limit, total),
+      counts: mapRecordStatusCounts(groups),
+    };
   }
 
   async findOne(id: number) {
@@ -110,6 +160,52 @@ export class MessagesService {
       data,
       include: { user: userInclude, appointment: messageAppointmentInclude },
     });
+  }
+
+  private buildListWhere(
+    query: ListMessagesQueryDto,
+    currentUser: JwtPayload,
+  ) {
+    const finishAt: Prisma.DateTimeFilter = {
+      gte: startOfDaySaoPaulo(query.from),
+      lte: endOfDaySaoPaulo(query.to),
+    };
+
+    const base: Prisma.MessageWhereInput = {
+      finishAt,
+      ...this.resolveUserFilter(currentUser, query.userId),
+    };
+
+    const whereWithoutRecordStatus: Prisma.MessageWhereInput = { ...base };
+    const where: Prisma.MessageWhereInput = { ...base };
+    if (query.recordStatus !== undefined) {
+      where.recordStatus = query.recordStatus;
+    }
+
+    return { where, whereWithoutRecordStatus };
+  }
+
+  private resolveUserFilter(
+    currentUser: JwtPayload,
+    requestedUserId?: number,
+  ): Prisma.MessageWhereInput {
+    if (currentUser.isAdmin) {
+      if (requestedUserId !== undefined) {
+        return { userId: requestedUserId };
+      }
+      return {};
+    }
+
+    if (
+      requestedUserId !== undefined &&
+      requestedUserId !== currentUser.sub
+    ) {
+      throw new ForbiddenException(
+        'Non-admin users cannot filter messages by another userId',
+      );
+    }
+
+    return { userId: currentUser.sub };
   }
 
   private async fetchInteractionMessages(

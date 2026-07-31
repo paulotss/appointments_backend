@@ -6,11 +6,22 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
-import { MessagesService } from './messages.service';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CreateMessageDto } from './dto/create-message.dto';
+import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
+import { MessagesService } from './messages.service';
 
 @ApiTags('messages')
 @Controller('messages')
@@ -24,9 +35,16 @@ export class MessagesController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Listar conversas WhatsApp' })
-  findAll() {
-    return this.messagesService.findAll();
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({
+    summary: 'Listar conversas WhatsApp (filtrado, paginado, com counts)',
+  })
+  findAll(
+    @Query() query: ListMessagesQueryDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.messagesService.findAll(query, user);
   }
 
   @Get(':id')
