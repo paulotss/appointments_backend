@@ -24,7 +24,9 @@ const stockExitInclude = {
   },
   healthProfessional: {
     include: {
-      specialty: true,
+      specialties: {
+        include: { specialty: true },
+      },
     },
   },
 } satisfies Prisma.StockExitInclude;

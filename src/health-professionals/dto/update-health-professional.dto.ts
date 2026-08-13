@@ -1,12 +1,16 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { CouncilType } from '@prisma/client';
+import { HealthProfessionalSpecialtyInputDto } from './health-professional-specialty-input.dto';
 
 export class UpdateHealthProfessionalDto {
   @ApiPropertyOptional({ example: 'Dr. Joao Silva' })
   name?: string;
 
-  @ApiPropertyOptional({ example: 1 })
-  specialtyId?: number;
+  @ApiPropertyOptional({
+    type: [HealthProfessionalSpecialtyInputDto],
+    example: [{ specialtyId: 1, privatePrice: 250 }],
+  })
+  specialties?: HealthProfessionalSpecialtyInputDto[];
 
   @ApiPropertyOptional({ enum: CouncilType, example: CouncilType.CRM })
   councilType?: CouncilType;

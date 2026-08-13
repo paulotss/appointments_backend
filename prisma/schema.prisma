@@ -53,10 +53,11 @@ enum CouncilType {
 }
 
 model Specialty {
-  id                  Int                  @id @default(autoincrement())
-  name                String               @db.VarChar(100)
-  appointments        Appointment[]
-  healthProfessionals HealthProfessional[]
+  id                           Int                           @id @default(autoincrement())
+  name                         String                        @db.VarChar(100)
+  appointments                 Appointment[]
+  healthProfessionalSpecialties HealthProfessionalSpecialty[]
+  insuranceGuides              InsuranceGuide[]
 
   @@map("specialties")
 }
@@ -64,7 +65,6 @@ model Specialty {
 model HealthProfessional {
   id            Int         @id @default(autoincrement())
   name          String      @db.VarChar(150)
-  specialtyId   Int         @map("specialty_id")
   councilType   CouncilType @map("council_type")
   councilNumber String      @map("council_number") @db.VarChar(30)
   cpf           String      @unique @db.VarChar(11)
@@ -72,10 +72,83 @@ model HealthProfessional {
   email         String?     @db.VarChar(150)
   isActive      Boolean     @default(true) @map("is_active")
   registeredAt  DateTime    @default(now()) @map("registered_at") @db.Date
-  specialty     Specialty   @relation(fields: [specialtyId], references: [id], onDelete: Restrict)
+  specialties   HealthProfessionalSpecialty[]
   stockExits    StockExit[]
+  insuranceGuides InsuranceGuide[]
 
   @@map("health_professionals")
+}
+
+model HealthProfessionalSpecialty {
+  id                   Int                @id @default(autoincrement())
+  healthProfessionalId Int                @map("health_professional_id")
+  specialtyId          Int                @map("specialty_id")
+  privatePrice         Decimal            @map("private_price") @db.Decimal(10, 2)
+  healthProfessional   HealthProfessional @relation(fields: [healthProfessionalId], references: [id], onDelete: Cascade)
+  specialty            Specialty          @relation(fields: [specialtyId], references: [id], onDelete: Restrict)
+
+  @@unique([healthProfessionalId, specialtyId])
+  @@index([specialtyId])
+  @@map("health_professional_specialties")
+}
+
+model HealthPlan {
+  id                      Int             @id @default(autoincrement())
+  name                    String          @db.VarChar(150)
+  submissionDeadlineDays  Int             @map("submission_deadline_days")
+  insuranceCards          InsuranceCard[]
+  insuranceGuides         InsuranceGuide[]
+
+  @@map("health_plans")
+}
+
+model Patient {
+  id             Int             @id @default(autoincrement())
+  name           String          @db.VarChar(150)
+  phone          String          @db.VarChar(20)
+  email          String?         @db.VarChar(150)
+  birthDate      DateTime        @map("birth_date") @db.Date
+  cpf            String          @unique @db.VarChar(11)
+  insuranceCards InsuranceCard[]
+  insuranceGuides InsuranceGuide[]
+
+  @@map("patients")
+}
+
+model InsuranceCard {
+  id            Int        @id @default(autoincrement())
+  patientId     Int        @map("patient_id")
+  healthPlanId  Int        @map("health_plan_id")
+  cardNumber    String     @map("card_number") @db.VarChar(50)
+  expirationDate DateTime  @map("expiration_date") @db.Date
+  patient       Patient    @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  healthPlan    HealthPlan @relation(fields: [healthPlanId], references: [id], onDelete: Restrict)
+
+  @@index([patientId])
+  @@index([healthPlanId])
+  @@index([expirationDate])
+  @@map("insurance_cards")
+}
+
+model InsuranceGuide {
+  id                   Int                @id @default(autoincrement())
+  healthPlanId         Int                @map("health_plan_id")
+  patientId            Int                @map("patient_id")
+  specialtyId          Int                @map("specialty_id")
+  healthProfessionalId Int                @map("health_professional_id")
+  quantity             Int
+  expirationDate       DateTime           @map("expiration_date") @db.Date
+  healthPlan           HealthPlan         @relation(fields: [healthPlanId], references: [id], onDelete: Restrict)
+  patient              Patient            @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  specialty            Specialty          @relation(fields: [specialtyId], references: [id], onDelete: Restrict)
+  healthProfessional   HealthProfessional @relation(fields: [healthProfessionalId], references: [id], onDelete: Restrict)
+
+  @@index([patientId])
+  @@index([healthPlanId])
+  @@index([specialtyId])
+  @@index([healthProfessionalId])
+  @@index([expirationDate])
+  @@map("insurance_guides")
 }
 
 model User {

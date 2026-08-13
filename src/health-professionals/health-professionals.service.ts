@@ -1,46 +1,62 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { normalizeName } from '../common/normalize-name';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateHealthProfessionalDto } from './dto/create-health-professional.dto';
+import { HealthProfessionalSpecialtyInputDto } from './dto/health-professional-specialty-input.dto';
 import { UpdateHealthProfessionalDto } from './dto/update-health-professional.dto';
 
 function digitsOnly(value: string): string {
   return value.replace(/\D/g, '');
 }
 
+const professionalInclude = {
+  specialties: {
+    include: { specialty: true },
+  },
+} as const;
+
 @Injectable()
 export class HealthProfessionalsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createHealthProfessionalDto: CreateHealthProfessionalDto) {
-    await this.ensureSpecialtyExists(createHealthProfessionalDto.specialtyId);
+    await this.ensureSpecialtiesValid(createHealthProfessionalDto.specialties);
 
     return this.prisma.healthProfessional.create({
       data: {
         name: normalizeName(createHealthProfessionalDto.name),
-        specialtyId: createHealthProfessionalDto.specialtyId,
         councilType: createHealthProfessionalDto.councilType,
         councilNumber: createHealthProfessionalDto.councilNumber.trim(),
         cpf: digitsOnly(createHealthProfessionalDto.cpf),
         phone: createHealthProfessionalDto.phone,
         email: createHealthProfessionalDto.email,
         isActive: createHealthProfessionalDto.isActive,
+        specialties: {
+          create: createHealthProfessionalDto.specialties.map((item) => ({
+            specialtyId: item.specialtyId,
+            privatePrice: item.privatePrice,
+          })),
+        },
       },
-      include: { specialty: true },
+      include: professionalInclude,
     });
   }
 
   findAll() {
     return this.prisma.healthProfessional.findMany({
       orderBy: { id: 'asc' },
-      include: { specialty: true },
+      include: professionalInclude,
     });
   }
 
   async findOne(id: number) {
     const professional = await this.prisma.healthProfessional.findUnique({
       where: { id },
-      include: { specialty: true },
+      include: professionalInclude,
     });
 
     if (!professional) {
@@ -56,39 +72,53 @@ export class HealthProfessionalsService {
   ) {
     await this.findOne(id);
 
-    if (updateHealthProfessionalDto.specialtyId !== undefined) {
-      await this.ensureSpecialtyExists(updateHealthProfessionalDto.specialtyId);
+    if (updateHealthProfessionalDto.specialties !== undefined) {
+      await this.ensureSpecialtiesValid(
+        updateHealthProfessionalDto.specialties,
+      );
     }
 
-    return this.prisma.healthProfessional.update({
-      where: { id },
-      data: {
-        ...(updateHealthProfessionalDto.name !== undefined && {
-          name: normalizeName(updateHealthProfessionalDto.name),
-        }),
-        ...(updateHealthProfessionalDto.specialtyId !== undefined && {
-          specialtyId: updateHealthProfessionalDto.specialtyId,
-        }),
-        ...(updateHealthProfessionalDto.councilType !== undefined && {
-          councilType: updateHealthProfessionalDto.councilType,
-        }),
-        ...(updateHealthProfessionalDto.councilNumber !== undefined && {
-          councilNumber: updateHealthProfessionalDto.councilNumber.trim(),
-        }),
-        ...(updateHealthProfessionalDto.cpf !== undefined && {
-          cpf: digitsOnly(updateHealthProfessionalDto.cpf),
-        }),
-        ...(updateHealthProfessionalDto.phone !== undefined && {
-          phone: updateHealthProfessionalDto.phone,
-        }),
-        ...(updateHealthProfessionalDto.email !== undefined && {
-          email: updateHealthProfessionalDto.email,
-        }),
-        ...(updateHealthProfessionalDto.isActive !== undefined && {
-          isActive: updateHealthProfessionalDto.isActive,
-        }),
-      },
-      include: { specialty: true },
+    return this.prisma.$transaction(async (tx) => {
+      if (updateHealthProfessionalDto.specialties !== undefined) {
+        await tx.healthProfessionalSpecialty.deleteMany({
+          where: { healthProfessionalId: id },
+        });
+        await tx.healthProfessionalSpecialty.createMany({
+          data: updateHealthProfessionalDto.specialties.map((item) => ({
+            healthProfessionalId: id,
+            specialtyId: item.specialtyId,
+            privatePrice: item.privatePrice,
+          })),
+        });
+      }
+
+      return tx.healthProfessional.update({
+        where: { id },
+        data: {
+          ...(updateHealthProfessionalDto.name !== undefined && {
+            name: normalizeName(updateHealthProfessionalDto.name),
+          }),
+          ...(updateHealthProfessionalDto.councilType !== undefined && {
+            councilType: updateHealthProfessionalDto.councilType,
+          }),
+          ...(updateHealthProfessionalDto.councilNumber !== undefined && {
+            councilNumber: updateHealthProfessionalDto.councilNumber.trim(),
+          }),
+          ...(updateHealthProfessionalDto.cpf !== undefined && {
+            cpf: digitsOnly(updateHealthProfessionalDto.cpf),
+          }),
+          ...(updateHealthProfessionalDto.phone !== undefined && {
+            phone: updateHealthProfessionalDto.phone,
+          }),
+          ...(updateHealthProfessionalDto.email !== undefined && {
+            email: updateHealthProfessionalDto.email,
+          }),
+          ...(updateHealthProfessionalDto.isActive !== undefined && {
+            isActive: updateHealthProfessionalDto.isActive,
+          }),
+        },
+        include: professionalInclude,
+      });
     });
   }
 
@@ -97,17 +127,37 @@ export class HealthProfessionalsService {
 
     return this.prisma.healthProfessional.delete({
       where: { id },
-      include: { specialty: true },
+      include: professionalInclude,
     });
   }
 
-  private async ensureSpecialtyExists(specialtyId: number) {
-    const specialty = await this.prisma.specialty.findUnique({
-      where: { id: specialtyId },
+  private async ensureSpecialtiesValid(
+    specialties: HealthProfessionalSpecialtyInputDto[],
+  ) {
+    if (!specialties.length) {
+      throw new BadRequestException(
+        'At least one specialty is required for a health professional',
+      );
+    }
+
+    const specialtyIds = specialties.map((item) => item.specialtyId);
+    const uniqueIds = new Set(specialtyIds);
+
+    if (uniqueIds.size !== specialtyIds.length) {
+      throw new BadRequestException(
+        'Duplicate specialties are not allowed for a health professional',
+      );
+    }
+
+    const found = await this.prisma.specialty.findMany({
+      where: { id: { in: specialtyIds } },
+      select: { id: true },
     });
 
-    if (!specialty) {
-      throw new NotFoundException(`Specialty ${specialtyId} not found`);
+    if (found.length !== specialtyIds.length) {
+      const foundIds = new Set(found.map((item) => item.id));
+      const missing = specialtyIds.find((id) => !foundIds.has(id));
+      throw new NotFoundException(`Specialty ${missing} not found`);
     }
   }
 }

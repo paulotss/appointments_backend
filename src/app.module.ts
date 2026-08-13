@@ -5,8 +5,12 @@ import { AppointmentsModule } from './appointments/appointments.module';
 import { AuthModule } from './auth/auth.module';
 import { CallsModule } from './calls/calls.module';
 import { CategoriesModule } from './categories/categories.module';
+import { HealthPlansModule } from './health-plans/health-plans.module';
 import { HealthProfessionalsModule } from './health-professionals/health-professionals.module';
+import { InsuranceCardsModule } from './insurance-cards/insurance-cards.module';
+import { InsuranceGuidesModule } from './insurance-guides/insurance-guides.module';
 import { MessagesModule } from './messages/messages.module';
+import { PatientsModule } from './patients/patients.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
 import { SectorsModule } from './sectors/sectors.module';
@@ -23,6 +27,10 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     SpecialtiesModule,
     HealthProfessionalsModule,
+    HealthPlansModule,
+    PatientsModule,
+    InsuranceCardsModule,
+    InsuranceGuidesModule,
     AppointmentsModule,
     CallsModule,
     MessagesModule,
