@@ -138,6 +138,7 @@ model InsuranceGuide {
   healthProfessionalId Int                @map("health_professional_id")
   quantity             Int
   expirationDate       DateTime           @map("expiration_date") @db.Date
+  isBilled             Boolean            @default(false) @map("is_billed")
   healthPlan           HealthPlan         @relation(fields: [healthPlanId], references: [id], onDelete: Restrict)
   patient              Patient            @relation(fields: [patientId], references: [id], onDelete: Restrict)
   specialty            Specialty          @relation(fields: [specialtyId], references: [id], onDelete: Restrict)

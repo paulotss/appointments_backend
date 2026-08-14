@@ -22,4 +22,12 @@ export class CreateInsuranceGuideDto {
       'Data de validade da guia (YYYY-MM-DD). Se omitida, usa hoje + submissionDeadlineDays do plano',
   })
   expirationDate?: string;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    example: false,
+    default: false,
+    description: 'Indica se a guia ja foi faturada. Padrao false',
+  })
+  isBilled?: boolean;
 }
