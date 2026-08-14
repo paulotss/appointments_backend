@@ -21,4 +21,11 @@ export class UpdateInsuranceGuideDto {
     description: 'Data de validade da guia (YYYY-MM-DD)',
   })
   expirationDate?: string;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    example: true,
+    description: 'Indica se a guia ja foi faturada',
+  })
+  isBilled?: boolean;
 }

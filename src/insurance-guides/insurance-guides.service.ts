@@ -41,13 +41,17 @@ export class InsuranceGuidesService {
         healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
         quantity: createInsuranceGuideDto.quantity,
         expirationDate,
+        ...(createInsuranceGuideDto.isBilled !== undefined && {
+          isBilled: createInsuranceGuideDto.isBilled,
+        }),
       },
       include: guideInclude,
     });
   }
 
-  findAll() {
+  findAll(isBilled?: boolean) {
     return this.prisma.insuranceGuide.findMany({
+      where: isBilled !== undefined ? { isBilled } : undefined,
       orderBy: { id: 'asc' },
       include: guideInclude,
     });
@@ -123,6 +127,9 @@ export class InsuranceGuidesService {
         }),
         ...(updateInsuranceGuideDto.expirationDate !== undefined && {
           expirationDate: new Date(updateInsuranceGuideDto.expirationDate),
+        }),
+        ...(updateInsuranceGuideDto.isBilled !== undefined && {
+          isBilled: updateInsuranceGuideDto.isBilled,
         }),
       },
       include: guideInclude,
