@@ -18,8 +18,10 @@ export class PatientsService {
         name: normalizeName(createPatientDto.name),
         phone: createPatientDto.phone,
         email: createPatientDto.email,
-        birthDate: new Date(createPatientDto.birthDate),
-        cpf: digitsOnly(createPatientDto.cpf),
+        birthDate: createPatientDto.birthDate
+          ? new Date(createPatientDto.birthDate)
+          : null,
+        cpf: createPatientDto.cpf ? digitsOnly(createPatientDto.cpf) : null,
       },
     });
   }
@@ -56,10 +58,12 @@ export class PatientsService {
           email: updatePatientDto.email,
         }),
         ...(updatePatientDto.birthDate !== undefined && {
-          birthDate: new Date(updatePatientDto.birthDate),
+          birthDate: updatePatientDto.birthDate
+            ? new Date(updatePatientDto.birthDate)
+            : null,
         }),
         ...(updatePatientDto.cpf !== undefined && {
-          cpf: digitsOnly(updatePatientDto.cpf),
+          cpf: updatePatientDto.cpf ? digitsOnly(updatePatientDto.cpf) : null,
         }),
       },
     });

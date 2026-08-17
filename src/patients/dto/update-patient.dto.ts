@@ -13,9 +13,10 @@ export class UpdatePatientDto {
   @ApiPropertyOptional({
     example: '1990-05-15',
     description: 'Data de nascimento (YYYY-MM-DD)',
+    nullable: true,
   })
-  birthDate?: string;
+  birthDate?: string | null;
 
-  @ApiPropertyOptional({ example: '52998224725' })
-  cpf?: string;
+  @ApiPropertyOptional({ example: '52998224725', nullable: true })
+  cpf?: string | null;
 }

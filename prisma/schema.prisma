@@ -107,8 +107,8 @@ model Patient {
   name           String          @db.VarChar(150)
   phone          String          @db.VarChar(20)
   email          String?         @db.VarChar(150)
-  birthDate      DateTime        @map("birth_date") @db.Date
-  cpf            String          @unique @db.VarChar(11)
+  birthDate      DateTime?       @map("birth_date") @db.Date
+  cpf            String?         @unique @db.VarChar(11)
   insuranceCards InsuranceCard[]
   insuranceGuides InsuranceGuide[]
 
