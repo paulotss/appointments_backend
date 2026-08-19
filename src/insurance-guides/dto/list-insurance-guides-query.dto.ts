@@ -1,6 +1,7 @@
+import { InsuranceGuideStatus } from '@prisma/client';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
-import { IsBoolean, IsOptional } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsBoolean, IsEnum, IsInt, IsOptional, Min } from 'class-validator';
 
 function toOptionalBoolean({ value }: { value: unknown }): unknown {
   if (value === undefined || value === null || value === '') {
@@ -26,4 +27,33 @@ export class ListInsuranceGuidesQueryDto {
   @Transform(toOptionalBoolean)
   @IsBoolean()
   isBilled?: boolean;
+
+  @ApiPropertyOptional({
+    enum: InsuranceGuideStatus,
+    example: InsuranceGuideStatus.pending,
+  })
+  @IsOptional()
+  @IsEnum(InsuranceGuideStatus)
+  status?: InsuranceGuideStatus;
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  patientId?: number;
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  healthProfessionalId?: number;
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  healthPlanId?: number;
 }
