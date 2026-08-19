@@ -1,13 +1,22 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInsuranceGuideDto } from './dto/create-insurance-guide.dto';
+import { InsuranceGuideProcedureInputDto } from './dto/insurance-guide-procedure-input.dto';
+import { ListInsuranceGuidesQueryDto } from './dto/list-insurance-guides-query.dto';
 import { UpdateInsuranceGuideDto } from './dto/update-insurance-guide.dto';
 
 const guideInclude = {
   healthPlan: true,
   patient: true,
-  specialty: true,
   healthProfessional: true,
+  procedures: {
+    include: { procedure: { include: { specialty: true } } },
+  },
 } as const;
 
 @Injectable()
@@ -19,14 +28,14 @@ export class InsuranceGuidesService {
       createInsuranceGuideDto.healthPlanId,
     );
     await this.ensurePatientExists(createInsuranceGuideDto.patientId);
-    await this.ensureSpecialtyExists(createInsuranceGuideDto.specialtyId);
     await this.ensureHealthProfessionalExists(
       createInsuranceGuideDto.healthProfessionalId,
     );
-    await this.ensureProfessionalHasSpecialty(
-      createInsuranceGuideDto.healthProfessionalId,
-      createInsuranceGuideDto.specialtyId,
-    );
+    await this.ensureGuideProceduresValid({
+      healthPlanId: createInsuranceGuideDto.healthPlanId,
+      healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
+      procedures: createInsuranceGuideDto.procedures,
+    });
 
     const expirationDate =
       createInsuranceGuideDto.expirationDate !== undefined
@@ -37,21 +46,38 @@ export class InsuranceGuidesService {
       data: {
         healthPlanId: createInsuranceGuideDto.healthPlanId,
         patientId: createInsuranceGuideDto.patientId,
-        specialtyId: createInsuranceGuideDto.specialtyId,
         healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
-        quantity: createInsuranceGuideDto.quantity,
         expirationDate,
         ...(createInsuranceGuideDto.isBilled !== undefined && {
           isBilled: createInsuranceGuideDto.isBilled,
         }),
+        ...(createInsuranceGuideDto.status !== undefined && {
+          status: createInsuranceGuideDto.status,
+        }),
+        procedures: {
+          create: createInsuranceGuideDto.procedures.map((item) => ({
+            procedureId: item.procedureId,
+            authorizedQuantity: item.authorizedQuantity,
+          })),
+        },
       },
       include: guideInclude,
     });
   }
 
-  findAll(isBilled?: boolean) {
+  findAll(query: ListInsuranceGuidesQueryDto) {
     return this.prisma.insuranceGuide.findMany({
-      where: isBilled !== undefined ? { isBilled } : undefined,
+      where: {
+        ...(query.isBilled !== undefined && { isBilled: query.isBilled }),
+        ...(query.status !== undefined && { status: query.status }),
+        ...(query.patientId !== undefined && { patientId: query.patientId }),
+        ...(query.healthProfessionalId !== undefined && {
+          healthProfessionalId: query.healthProfessionalId,
+        }),
+        ...(query.healthPlanId !== undefined && {
+          healthPlanId: query.healthPlanId,
+        }),
+      },
       orderBy: { id: 'asc' },
       include: guideInclude,
     });
@@ -81,68 +107,216 @@ export class InsuranceGuidesService {
       await this.ensurePatientExists(updateInsuranceGuideDto.patientId);
     }
 
-    if (updateInsuranceGuideDto.specialtyId !== undefined) {
-      await this.ensureSpecialtyExists(updateInsuranceGuideDto.specialtyId);
-    }
-
     if (updateInsuranceGuideDto.healthProfessionalId !== undefined) {
       await this.ensureHealthProfessionalExists(
         updateInsuranceGuideDto.healthProfessionalId,
       );
     }
 
+    const healthPlanId =
+      updateInsuranceGuideDto.healthPlanId ?? existing.healthPlanId;
     const healthProfessionalId =
       updateInsuranceGuideDto.healthProfessionalId ??
       existing.healthProfessionalId;
-    const specialtyId =
-      updateInsuranceGuideDto.specialtyId ?? existing.specialtyId;
+    const procedures =
+      updateInsuranceGuideDto.procedures ??
+      existing.procedures.map((item) => ({
+        procedureId: item.procedureId,
+        authorizedQuantity: item.authorizedQuantity,
+      }));
 
-    if (
-      updateInsuranceGuideDto.healthProfessionalId !== undefined ||
-      updateInsuranceGuideDto.specialtyId !== undefined
-    ) {
-      await this.ensureProfessionalHasSpecialty(
+    const shouldRevalidateProcedures =
+      updateInsuranceGuideDto.procedures !== undefined ||
+      updateInsuranceGuideDto.healthPlanId !== undefined ||
+      updateInsuranceGuideDto.healthProfessionalId !== undefined;
+
+    if (shouldRevalidateProcedures) {
+      await this.ensureGuideProceduresValid({
+        healthPlanId,
         healthProfessionalId,
-        specialtyId,
-      );
+        procedures,
+      });
     }
 
-    return this.prisma.insuranceGuide.update({
-      where: { id },
-      data: {
-        ...(updateInsuranceGuideDto.healthPlanId !== undefined && {
-          healthPlanId: updateInsuranceGuideDto.healthPlanId,
-        }),
-        ...(updateInsuranceGuideDto.patientId !== undefined && {
-          patientId: updateInsuranceGuideDto.patientId,
-        }),
-        ...(updateInsuranceGuideDto.specialtyId !== undefined && {
-          specialtyId: updateInsuranceGuideDto.specialtyId,
-        }),
-        ...(updateInsuranceGuideDto.healthProfessionalId !== undefined && {
-          healthProfessionalId: updateInsuranceGuideDto.healthProfessionalId,
-        }),
-        ...(updateInsuranceGuideDto.quantity !== undefined && {
-          quantity: updateInsuranceGuideDto.quantity,
-        }),
-        ...(updateInsuranceGuideDto.expirationDate !== undefined && {
-          expirationDate: new Date(updateInsuranceGuideDto.expirationDate),
-        }),
-        ...(updateInsuranceGuideDto.isBilled !== undefined && {
-          isBilled: updateInsuranceGuideDto.isBilled,
-        }),
-      },
-      include: guideInclude,
-    });
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        if (updateInsuranceGuideDto.procedures !== undefined) {
+          await this.syncGuideProcedures(
+            tx,
+            id,
+            existing.procedures,
+            updateInsuranceGuideDto.procedures,
+          );
+        }
+
+        return tx.insuranceGuide.update({
+          where: { id },
+          data: {
+            ...(updateInsuranceGuideDto.healthPlanId !== undefined && {
+              healthPlanId: updateInsuranceGuideDto.healthPlanId,
+            }),
+            ...(updateInsuranceGuideDto.patientId !== undefined && {
+              patientId: updateInsuranceGuideDto.patientId,
+            }),
+            ...(updateInsuranceGuideDto.healthProfessionalId !== undefined && {
+              healthProfessionalId:
+                updateInsuranceGuideDto.healthProfessionalId,
+            }),
+            ...(updateInsuranceGuideDto.expirationDate !== undefined && {
+              expirationDate: new Date(updateInsuranceGuideDto.expirationDate),
+            }),
+            ...(updateInsuranceGuideDto.isBilled !== undefined && {
+              isBilled: updateInsuranceGuideDto.isBilled,
+            }),
+            ...(updateInsuranceGuideDto.status !== undefined && {
+              status: updateInsuranceGuideDto.status,
+            }),
+          },
+          include: guideInclude,
+        });
+      });
+    } catch (error) {
+      this.rethrowKnownPrismaError(error);
+      throw error;
+    }
   }
 
   async remove(id: number) {
     await this.findOne(id);
 
-    return this.prisma.insuranceGuide.delete({
-      where: { id },
-      include: guideInclude,
+    try {
+      return await this.prisma.insuranceGuide.delete({
+        where: { id },
+        include: guideInclude,
+      });
+    } catch (error) {
+      this.rethrowKnownPrismaError(error);
+      throw error;
+    }
+  }
+
+  private async syncGuideProcedures(
+    tx: Prisma.TransactionClient,
+    insuranceGuideId: number,
+    existing: Array<{
+      procedureId: number;
+      authorizedQuantity: number;
+      usedQuantity: number;
+    }>,
+    incoming: InsuranceGuideProcedureInputDto[],
+  ) {
+    const existingByProcedureId = new Map(
+      existing.map((item) => [item.procedureId, item]),
+    );
+    const incomingIds = new Set(incoming.map((item) => item.procedureId));
+
+    for (const current of existing) {
+      if (!incomingIds.has(current.procedureId)) {
+        if (current.usedQuantity > 0) {
+          throw new BadRequestException(
+            `Cannot remove procedure ${current.procedureId} from insurance guide because usedQuantity is ${current.usedQuantity}`,
+          );
+        }
+
+        await tx.insuranceGuideProcedure.delete({
+          where: {
+            insuranceGuideId_procedureId: {
+              insuranceGuideId,
+              procedureId: current.procedureId,
+            },
+          },
+        });
+      }
+    }
+
+    for (const item of incoming) {
+      const current = existingByProcedureId.get(item.procedureId);
+      if (!current) {
+        await tx.insuranceGuideProcedure.create({
+          data: {
+            insuranceGuideId,
+            procedureId: item.procedureId,
+            authorizedQuantity: item.authorizedQuantity,
+          },
+        });
+        continue;
+      }
+
+      if (item.authorizedQuantity < current.usedQuantity) {
+        throw new BadRequestException(
+          `authorizedQuantity for procedure ${item.procedureId} cannot be less than usedQuantity ${current.usedQuantity}`,
+        );
+      }
+
+      if (item.authorizedQuantity !== current.authorizedQuantity) {
+        await tx.insuranceGuideProcedure.update({
+          where: {
+            insuranceGuideId_procedureId: {
+              insuranceGuideId,
+              procedureId: item.procedureId,
+            },
+          },
+          data: { authorizedQuantity: item.authorizedQuantity },
+        });
+      }
+    }
+  }
+
+  private async ensureGuideProceduresValid(params: {
+    healthPlanId: number;
+    healthProfessionalId: number;
+    procedures: InsuranceGuideProcedureInputDto[];
+  }) {
+    const procedureIds = params.procedures.map((item) => item.procedureId);
+    const uniqueIds = new Set(procedureIds);
+    if (uniqueIds.size !== procedureIds.length) {
+      throw new BadRequestException(
+        'procedures cannot contain duplicate procedureId',
+      );
+    }
+
+    const dbProcedures = await this.prisma.procedure.findMany({
+      where: { id: { in: procedureIds } },
+      select: { id: true, specialtyId: true },
     });
+
+    if (dbProcedures.length !== uniqueIds.size) {
+      const found = new Set(dbProcedures.map((item) => item.id));
+      const missing = procedureIds.find((id) => !found.has(id));
+      throw new NotFoundException(`Procedure ${missing} not found`);
+    }
+
+    const professionalSpecialties =
+      await this.prisma.healthProfessionalSpecialty.findMany({
+        where: { healthProfessionalId: params.healthProfessionalId },
+        select: { specialtyId: true },
+      });
+    const allowedSpecialtyIds = new Set(
+      professionalSpecialties.map((item) => item.specialtyId),
+    );
+
+    for (const procedure of dbProcedures) {
+      if (!allowedSpecialtyIds.has(procedure.specialtyId)) {
+        throw new NotFoundException(
+          `Health professional ${params.healthProfessionalId} does not have specialty ${procedure.specialtyId} required by procedure ${procedure.id}`,
+        );
+      }
+    }
+
+    const priced = await this.prisma.healthPlanProcedure.findMany({
+      where: {
+        healthPlanId: params.healthPlanId,
+        procedureId: { in: procedureIds },
+      },
+      select: { procedureId: true },
+    });
+    const pricedIds = new Set(priced.map((item) => item.procedureId));
+    const withoutPrice = procedureIds.find((id) => !pricedIds.has(id));
+    if (withoutPrice !== undefined) {
+      throw new BadRequestException(
+        `Procedure ${withoutPrice} has no price for health plan ${params.healthPlanId}`,
+      );
+    }
   }
 
   private defaultExpirationDate(submissionDeadlineDays: number): Date {
@@ -174,16 +348,6 @@ export class InsuranceGuidesService {
     }
   }
 
-  private async ensureSpecialtyExists(specialtyId: number) {
-    const specialty = await this.prisma.specialty.findUnique({
-      where: { id: specialtyId },
-    });
-
-    if (!specialty) {
-      throw new NotFoundException(`Specialty ${specialtyId} not found`);
-    }
-  }
-
   private async ensureHealthProfessionalExists(healthProfessionalId: number) {
     const professional = await this.prisma.healthProfessional.findUnique({
       where: { id: healthProfessionalId },
@@ -196,22 +360,13 @@ export class InsuranceGuidesService {
     }
   }
 
-  private async ensureProfessionalHasSpecialty(
-    healthProfessionalId: number,
-    specialtyId: number,
-  ) {
-    const link = await this.prisma.healthProfessionalSpecialty.findUnique({
-      where: {
-        healthProfessionalId_specialtyId: {
-          healthProfessionalId,
-          specialtyId,
-        },
-      },
-    });
-
-    if (!link) {
-      throw new NotFoundException(
-        `Health professional ${healthProfessionalId} does not have specialty ${specialtyId}`,
+  private rethrowKnownPrismaError(error: unknown): void {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2003'
+    ) {
+      throw new BadRequestException(
+        'Insurance guide cannot be removed because it is in use',
       );
     }
   }
