@@ -20,12 +20,6 @@ export class CreateProcedureDto {
   @Min(1)
   specialtyId!: number;
 
-  @ApiProperty({ example: '10101012', description: 'Codigo TISS/TUSS' })
-  @IsString()
-  @MinLength(1)
-  @MaxLength(20)
-  tissCode!: string;
-
   @ApiProperty({ example: 'Consulta' })
   @IsString()
   @MinLength(1)
@@ -43,7 +37,7 @@ export class CreateProcedureDto {
 
   @ApiPropertyOptional({
     type: [HealthPlanPriceInputDto],
-    example: [{ healthPlanId: 1, value: 80 }],
+    example: [{ healthPlanId: 1, tissCode: '10101012', value: 80 }],
   })
   @IsOptional()
   @IsArray()

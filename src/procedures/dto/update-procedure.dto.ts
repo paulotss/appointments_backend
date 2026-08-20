@@ -21,13 +21,6 @@ export class UpdateProcedureDto {
   @Min(1)
   specialtyId?: number;
 
-  @ApiPropertyOptional({ example: '10101012' })
-  @IsOptional()
-  @IsString()
-  @MinLength(1)
-  @MaxLength(20)
-  tissCode?: string;
-
   @ApiPropertyOptional({ example: 'Consulta' })
   @IsOptional()
   @IsString()
@@ -44,7 +37,7 @@ export class UpdateProcedureDto {
 
   @ApiPropertyOptional({
     type: [HealthPlanPriceInputDto],
-    example: [{ healthPlanId: 1, value: 80 }],
+    example: [{ healthPlanId: 1, tissCode: '10101012', value: 80 }],
     description: 'Substitui todos os precos por plano. Envie [] para remover.',
   })
   @IsOptional()

@@ -1,7 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Patient } from '@prisma/client';
 import { normalizeName } from '../common/normalize-name';
+import {
+  buildListMeta,
+  ListEnvelope,
+} from '../common/pagination/list-envelope';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
+import { ListPatientsQueryDto } from './dto/list-patients-query.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
 
 function digitsOnly(value: string): string {
@@ -26,10 +32,29 @@ export class PatientsService {
     });
   }
 
-  findAll() {
-    return this.prisma.patient.findMany({
-      orderBy: { id: 'asc' },
-    });
+  async findAll(query: ListPatientsQueryDto): Promise<ListEnvelope<Patient>> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 50;
+    const where = {
+      ...(query.name && {
+        name: { contains: query.name, mode: 'insensitive' as const },
+      }),
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.patient.findMany({
+        where,
+        orderBy: { id: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.patient.count({ where }),
+    ]);
+
+    return {
+      data,
+      meta: buildListMeta(page, limit, total),
+    };
   }
 
   async findOne(id: number) {

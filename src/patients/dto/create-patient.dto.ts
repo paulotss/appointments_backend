@@ -16,6 +16,9 @@ export class CreatePatientDto {
   })
   birthDate?: string;
 
-  @ApiPropertyOptional({ example: '52998224725', description: 'CPF com 11 digitos' })
+  @ApiPropertyOptional({
+    example: '52998224725',
+    description: 'CPF com 11 digitos',
+  })
   cpf?: string;
 }

@@ -66,6 +66,7 @@ enum ClinicalAppointmentStatus {
   waiting   @map("em_espera")
   attended  @map("atendido")
   finished  @map("finalizado")
+  absent    @map("falta")
 
   @@map("clinical_appointment_status_enum")
 }
@@ -161,7 +162,6 @@ model InsuranceCard {
 model Procedure {
   id               Int                           @id @default(autoincrement())
   specialtyId      Int                           @map("specialty_id")
-  tissCode         String                        @unique @map("tiss_code") @db.VarChar(20)
   name             String                        @db.VarChar(150)
   value            Decimal                       @db.Decimal(10, 2)
   specialty        Specialty                     @relation(fields: [specialtyId], references: [id], onDelete: Restrict)
@@ -177,11 +177,13 @@ model HealthPlanProcedure {
   id           Int        @id @default(autoincrement())
   healthPlanId Int        @map("health_plan_id")
   procedureId  Int        @map("procedure_id")
+  tissCode     String     @map("tiss_code") @db.VarChar(20)
   value        Decimal    @db.Decimal(10, 2)
   healthPlan   HealthPlan @relation(fields: [healthPlanId], references: [id], onDelete: Restrict)
   procedure    Procedure  @relation(fields: [procedureId], references: [id], onDelete: Cascade)
 
   @@unique([healthPlanId, procedureId])
+  @@unique([healthPlanId, tissCode])
   @@index([procedureId])
   @@map("health_plan_procedures")
 }
@@ -214,6 +216,7 @@ model InsuranceGuideProcedure {
   procedureId         Int            @map("procedure_id")
   authorizedQuantity  Int            @map("authorized_quantity")
   usedQuantity        Int            @default(0) @map("used_quantity")
+  value               Decimal        @db.Decimal(10, 2)
   insuranceGuide      InsuranceGuide @relation(fields: [insuranceGuideId], references: [id], onDelete: Cascade)
   procedure           Procedure      @relation(fields: [procedureId], references: [id], onDelete: Restrict)
 
@@ -227,6 +230,7 @@ model ClinicalAppointment {
   patientId            Int                            @map("patient_id")
   healthProfessionalId Int                            @map("health_professional_id")
   scheduledAt          DateTime                       @map("scheduled_at") @db.Timestamp(3)
+  endsAt               DateTime                       @map("ends_at") @db.Timestamp(3)
   status               ClinicalAppointmentStatus      @default(marked)
   type                 ClinicalAppointmentType
   patient              Patient                        @relation(fields: [patientId], references: [id], onDelete: Restrict)
@@ -237,6 +241,7 @@ model ClinicalAppointment {
   @@index([patientId])
   @@index([healthProfessionalId])
   @@index([scheduledAt])
+  @@index([endsAt])
   @@index([status])
   @@index([type])
   @@map("clinical_appointments")

@@ -1,6 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, Min } from 'class-validator';
+import { IsInt, IsNumber, IsOptional, Min } from 'class-validator';
 
 export class InsuranceGuideProcedureInputDto {
   @ApiProperty({ example: 1 })
@@ -17,4 +17,15 @@ export class InsuranceGuideProcedureInputDto {
   @IsInt()
   @Min(1)
   authorizedQuantity!: number;
+
+  @ApiPropertyOptional({
+    example: 80.0,
+    description:
+      'Valor deste procedimento na guia. Se omitido, usa o preco do plano',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  value?: number;
 }

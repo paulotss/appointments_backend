@@ -3,10 +3,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { normalizeName } from '../common/normalize-name';
+import {
+  buildListMeta,
+  ListEnvelope,
+} from '../common/pagination/list-envelope';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateHealthProfessionalDto } from './dto/create-health-professional.dto';
 import { HealthProfessionalSpecialtyInputDto } from './dto/health-professional-specialty-input.dto';
+import { ListHealthProfessionalsQueryDto } from './dto/list-health-professionals-query.dto';
 import { UpdateHealthProfessionalDto } from './dto/update-health-professional.dto';
 
 function digitsOnly(value: string): string {
@@ -46,11 +52,36 @@ export class HealthProfessionalsService {
     });
   }
 
-  findAll() {
-    return this.prisma.healthProfessional.findMany({
-      orderBy: { id: 'asc' },
-      include: professionalInclude,
-    });
+  async findAll(query: ListHealthProfessionalsQueryDto): Promise<
+    ListEnvelope<
+      Prisma.HealthProfessionalGetPayload<{
+        include: typeof professionalInclude;
+      }>
+    >
+  > {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 50;
+    const where = {
+      ...(query.name && {
+        name: { contains: query.name, mode: 'insensitive' as const },
+      }),
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.healthProfessional.findMany({
+        where,
+        orderBy: { id: 'asc' },
+        include: professionalInclude,
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.healthProfessional.count({ where }),
+    ]);
+
+    return {
+      data,
+      meta: buildListMeta(page, limit, total),
+    };
   }
 
   async findOne(id: number) {

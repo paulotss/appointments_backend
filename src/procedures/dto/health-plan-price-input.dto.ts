@@ -1,6 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsNumber, Min } from 'class-validator';
+import {
+  IsInt,
+  IsNumber,
+  IsString,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class HealthPlanPriceInputDto {
   @ApiProperty({ example: 1 })
@@ -8,6 +15,15 @@ export class HealthPlanPriceInputDto {
   @IsInt()
   @Min(1)
   healthPlanId!: number;
+
+  @ApiProperty({
+    example: '10101012',
+    description: 'Codigo TISS/TUSS deste procedimento neste plano',
+  })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(20)
+  tissCode!: string;
 
   @ApiProperty({
     example: 80.0,

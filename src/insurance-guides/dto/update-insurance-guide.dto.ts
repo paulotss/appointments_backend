@@ -38,7 +38,7 @@ export class UpdateInsuranceGuideDto {
 
   @ApiPropertyOptional({
     type: [InsuranceGuideProcedureInputDto],
-    example: [{ procedureId: 1, authorizedQuantity: 10 }],
+    example: [{ procedureId: 1, authorizedQuantity: 10, value: 80 }],
   })
   @IsOptional()
   @IsArray()
