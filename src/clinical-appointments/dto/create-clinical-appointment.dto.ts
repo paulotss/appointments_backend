@@ -29,10 +29,17 @@ export class CreateClinicalAppointmentDto {
 
   @ApiProperty({
     example: '2026-08-20T14:30:00.000Z',
-    description: 'Data/hora do agendamento (ISO 8601)',
+    description: 'Data/hora de inicio do agendamento (ISO 8601)',
   })
   @IsDateString()
   scheduledAt!: string;
+
+  @ApiProperty({
+    example: '2026-08-20T15:00:00.000Z',
+    description: 'Data/hora de termino do agendamento (ISO 8601)',
+  })
+  @IsDateString()
+  endsAt!: string;
 
   @ApiProperty({
     enum: ClinicalAppointmentType,
@@ -47,7 +54,7 @@ export class CreateClinicalAppointmentDto {
     example: ClinicalAppointmentStatus.marked,
     default: ClinicalAppointmentStatus.marked,
     description:
-      'marked (marcado), confirmed (confirmado), waiting (em espera), attended (atendido), finished (finalizado)',
+      'marked (marcado), confirmed (confirmado), waiting (em espera), attended (atendido), finished (finalizado), absent (falta)',
   })
   @IsOptional()
   @IsEnum(ClinicalAppointmentStatus)

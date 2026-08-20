@@ -35,7 +35,7 @@ export class CreateInsuranceGuideDto {
 
   @ApiProperty({
     type: [InsuranceGuideProcedureInputDto],
-    example: [{ procedureId: 1, authorizedQuantity: 10 }],
+    example: [{ procedureId: 1, authorizedQuantity: 10, value: 80 }],
   })
   @IsArray()
   @ArrayMinSize(1)

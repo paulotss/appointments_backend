@@ -7,9 +7,11 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { CreateHealthProfessionalDto } from './dto/create-health-professional.dto';
+import { ListHealthProfessionalsQueryDto } from './dto/list-health-professionals-query.dto';
 import { UpdateHealthProfessionalDto } from './dto/update-health-professional.dto';
 import { HealthProfessionalsService } from './health-professionals.service';
 
@@ -28,8 +30,8 @@ export class HealthProfessionalsController {
 
   @Get()
   @ApiOperation({ summary: 'Listar profissionais da saude' })
-  findAll() {
-    return this.healthProfessionalsService.findAll();
+  findAll(@Query() query: ListHealthProfessionalsQueryDto) {
+    return this.healthProfessionalsService.findAll(query);
   }
 
   @Get(':id')

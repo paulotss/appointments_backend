@@ -31,13 +31,13 @@ export class ProceduresService {
       return await this.prisma.procedure.create({
         data: {
           specialtyId: createProcedureDto.specialtyId,
-          tissCode: this.normalizeTissCode(createProcedureDto.tissCode),
           name: normalizeName(createProcedureDto.name),
           value: createProcedureDto.value,
           ...(createProcedureDto.healthPlanPrices !== undefined && {
             healthPlanPrices: {
               create: createProcedureDto.healthPlanPrices.map((item) => ({
                 healthPlanId: item.healthPlanId,
+                tissCode: this.normalizeTissCode(item.tissCode),
                 value: item.value,
               })),
             },
@@ -108,9 +108,6 @@ export class ProceduresService {
             ...(updateProcedureDto.specialtyId !== undefined && {
               specialtyId: updateProcedureDto.specialtyId,
             }),
-            ...(updateProcedureDto.tissCode !== undefined && {
-              tissCode: this.normalizeTissCode(updateProcedureDto.tissCode),
-            }),
             ...(updateProcedureDto.name !== undefined && {
               name: normalizeName(updateProcedureDto.name),
             }),
@@ -121,6 +118,7 @@ export class ProceduresService {
               healthPlanPrices: {
                 create: updateProcedureDto.healthPlanPrices.map((item) => ({
                   healthPlanId: item.healthPlanId,
+                  tissCode: this.normalizeTissCode(item.tissCode),
                   value: item.value,
                 })),
               },
@@ -195,7 +193,9 @@ export class ProceduresService {
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === 'P2002'
     ) {
-      throw new ConflictException('tissCode already exists');
+      throw new ConflictException(
+        'tissCode already exists for this health plan',
+      );
     }
 
     if (

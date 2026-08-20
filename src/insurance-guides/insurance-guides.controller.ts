@@ -36,7 +36,7 @@ export class InsuranceGuidesController {
   @ApiOperation({
     summary: 'Listar guias de plano de saude',
     description:
-      'Filtros opcionais: isBilled, status, patientId, healthProfessionalId, healthPlanId.',
+      'Filtros opcionais: isBilled, status, patientId, healthProfessionalId, healthPlanId. Paginado com page/limit.',
   })
   findAll(@Query() query: ListInsuranceGuidesQueryDto) {
     return this.insuranceGuidesService.findAll(query);

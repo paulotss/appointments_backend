@@ -25,7 +25,9 @@ const appointmentInclude = {
       insuranceGuide: {
         include: {
           healthPlan: true,
-          procedures: { include: { procedure: true } },
+          procedures: {
+            include: { procedure: { include: { healthPlanPrices: true } } },
+          },
         },
       },
     },
@@ -51,6 +53,8 @@ export class ClinicalAppointmentsService {
 
     const status = createDto.status ?? ClinicalAppointmentStatus.marked;
     const scheduledAt = new Date(createDto.scheduledAt);
+    const endsAt = new Date(createDto.endsAt);
+    this.ensureValidInterval(scheduledAt, endsAt);
 
     if (createDto.type === ClinicalAppointmentType.private) {
       if (createDto.insuranceGuideIds !== undefined) {
@@ -73,6 +77,7 @@ export class ClinicalAppointmentsService {
           patientId: createDto.patientId,
           healthProfessionalId: createDto.healthProfessionalId,
           scheduledAt,
+          endsAt,
           status,
           type: ClinicalAppointmentType.private,
           procedures: {
@@ -107,6 +112,7 @@ export class ClinicalAppointmentsService {
           patientId: createDto.patientId,
           healthProfessionalId: createDto.healthProfessionalId,
           scheduledAt,
+          endsAt,
           status,
           type: ClinicalAppointmentType.health_plan,
           insuranceGuides: {
@@ -192,6 +198,11 @@ export class ClinicalAppointmentsService {
       updateDto.scheduledAt !== undefined
         ? new Date(updateDto.scheduledAt)
         : existing.scheduledAt;
+    const nextEndsAt =
+      updateDto.endsAt !== undefined
+        ? new Date(updateDto.endsAt)
+        : existing.endsAt;
+    this.ensureValidInterval(nextScheduledAt, nextEndsAt);
 
     if (updateDto.patientId !== undefined) {
       await this.ensurePatientExists(updateDto.patientId);
@@ -272,6 +283,7 @@ export class ClinicalAppointmentsService {
           patientId: nextPatientId,
           healthProfessionalId: nextProfessionalId,
           scheduledAt: nextScheduledAt,
+          endsAt: nextEndsAt,
           status: nextStatus,
           type: nextType,
         },
@@ -422,6 +434,12 @@ export class ClinicalAppointmentsService {
       })
       .sort()
       .join('|');
+  }
+
+  private ensureValidInterval(scheduledAt: Date, endsAt: Date) {
+    if (endsAt.getTime() <= scheduledAt.getTime()) {
+      throw new BadRequestException('endsAt must be after scheduledAt');
+    }
   }
 
   private uniqueIds(

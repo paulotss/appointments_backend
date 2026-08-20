@@ -7,9 +7,11 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { CreatePatientDto } from './dto/create-patient.dto';
+import { ListPatientsQueryDto } from './dto/list-patients-query.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
 import { PatientsService } from './patients.service';
 
@@ -26,8 +28,8 @@ export class PatientsController {
 
   @Get()
   @ApiOperation({ summary: 'Listar pacientes' })
-  findAll() {
-    return this.patientsService.findAll();
+  findAll(@Query() query: ListPatientsQueryDto) {
+    return this.patientsService.findAll(query);
   }
 
   @Get(':id')

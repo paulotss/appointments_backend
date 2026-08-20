@@ -31,11 +31,19 @@ export class UpdateClinicalAppointmentDto {
 
   @ApiPropertyOptional({
     example: '2026-08-20T14:30:00.000Z',
-    description: 'Data/hora do agendamento (ISO 8601)',
+    description: 'Data/hora de inicio do agendamento (ISO 8601)',
   })
   @IsOptional()
   @IsDateString()
   scheduledAt?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-08-20T15:00:00.000Z',
+    description: 'Data/hora de termino do agendamento (ISO 8601)',
+  })
+  @IsOptional()
+  @IsDateString()
+  endsAt?: string;
 
   @ApiPropertyOptional({
     enum: ClinicalAppointmentType,
