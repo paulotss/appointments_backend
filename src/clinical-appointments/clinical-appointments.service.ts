@@ -37,6 +37,7 @@ const appointmentInclude = {
 
 const guideForAppointmentInclude = {
   procedures: { include: { procedure: true } },
+  billingBatchGuide: true,
 } as const;
 
 type GuideForAppointment = Prisma.InsuranceGuideGetPayload<{
@@ -538,6 +539,12 @@ export class ClinicalAppointmentsService {
       if (guide.isBilled) {
         throw new BadRequestException(
           `Insurance guide ${guide.id} is already billed`,
+        );
+      }
+
+      if (guide.billingBatchGuide) {
+        throw new BadRequestException(
+          `Insurance guide ${guide.id} is already in a billing batch`,
         );
       }
 

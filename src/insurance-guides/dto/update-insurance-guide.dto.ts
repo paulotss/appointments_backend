@@ -4,7 +4,6 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
-  IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
@@ -54,15 +53,6 @@ export class UpdateInsuranceGuideDto {
   @IsOptional()
   @IsDateString()
   expirationDate?: string;
-
-  @ApiPropertyOptional({
-    type: Boolean,
-    example: true,
-    description: 'Indica se a guia ja foi faturada',
-  })
-  @IsOptional()
-  @IsBoolean()
-  isBilled?: boolean;
 
   @ApiPropertyOptional({
     enum: InsuranceGuideStatus,

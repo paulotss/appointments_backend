@@ -78,6 +78,56 @@ enum ClinicalAppointmentType {
   @@map("clinical_appointment_type_enum")
 }
 
+enum PaymentMethod {
+  pix
+  debit    @map("debito")
+  credit   @map("credito")
+  cash     @map("dinheiro")
+  transfer @map("transferencia")
+
+  @@map("payment_method_enum")
+}
+
+enum FinancialEntryType {
+  private_procedure @map("procedimento_particular")
+  health_plan       @map("plano_de_saude")
+
+  @@map("financial_entry_type_enum")
+}
+
+enum FinancialEntryStatus {
+  pending        @map("pendente")
+  paid           @map("pago")
+  partially_paid @map("parcialmente_pago")
+  cancelled      @map("cancelado")
+
+  @@map("financial_entry_status_enum")
+}
+
+enum PayableKind {
+  material
+  service @map("servico")
+
+  @@map("payable_kind_enum")
+}
+
+enum PayableStatus {
+  pending   @map("pendente")
+  paid      @map("pago")
+  cancelled @map("cancelado")
+
+  @@map("payable_status_enum")
+}
+
+enum BillingBatchStatus {
+  open      @map("aberto")
+  billed    @map("faturado")
+  settled   @map("baixado")
+  cancelled @map("cancelado")
+
+  @@map("billing_batch_status_enum")
+}
+
 model Specialty {
   id                            Int                           @id @default(autoincrement())
   name                          String                        @db.VarChar(100)
@@ -126,6 +176,7 @@ model HealthPlan {
   insuranceCards         InsuranceCard[]
   insuranceGuides        InsuranceGuide[]
   procedurePrices        HealthPlanProcedure[]
+  billingBatches         BillingBatch[]
 
   @@map("health_plans")
 }
@@ -165,9 +216,10 @@ model Procedure {
   name             String                        @db.VarChar(150)
   value            Decimal                       @db.Decimal(10, 2)
   specialty        Specialty                     @relation(fields: [specialtyId], references: [id], onDelete: Restrict)
-  healthPlanPrices HealthPlanProcedure[]
-  guideProcedures  InsuranceGuideProcedure[]
+  healthPlanPrices      HealthPlanProcedure[]
+  guideProcedures       InsuranceGuideProcedure[]
   appointmentProcedures ClinicalAppointmentProcedure[]
+  financialEntryItems   FinancialEntryItem[]
 
   @@index([specialtyId])
   @@map("procedures")
@@ -201,6 +253,7 @@ model InsuranceGuide {
   healthProfessional   HealthProfessional         @relation(fields: [healthProfessionalId], references: [id], onDelete: Restrict)
   procedures                 InsuranceGuideProcedure[]
   clinicalAppointmentGuides  ClinicalAppointmentGuide[]
+  billingBatchGuide          BillingBatchGuide?
 
   @@index([patientId])
   @@index([healthPlanId])
@@ -237,6 +290,7 @@ model ClinicalAppointment {
   healthProfessional   HealthProfessional             @relation(fields: [healthProfessionalId], references: [id], onDelete: Restrict)
   insuranceGuides      ClinicalAppointmentGuide[]
   procedures           ClinicalAppointmentProcedure[]
+  financialEntry       FinancialEntry?
 
   @@index([patientId])
   @@index([healthProfessionalId])
@@ -414,6 +468,7 @@ model Supplier {
   email        String       @db.VarChar(255)
   website      String?      @db.VarChar(255)
   stockBatches StockBatch[]
+  payables     Payable[]
 
   @@map("suppliers")
 }
@@ -455,4 +510,128 @@ model StockExit {
   healthProfessional   HealthProfessional? @relation(fields: [healthProfessionalId], references: [id], onDelete: SetNull)
 
   @@map("stock_exits")
+}
+
+model FinancialEntry {
+  id                    Int                   @id @default(autoincrement())
+  type                  FinancialEntryType
+  status                FinancialEntryStatus
+  grossAmount           Decimal               @map("gross_amount") @db.Decimal(10, 2)
+  discountAmount        Decimal               @default(0) @map("discount_amount") @db.Decimal(10, 2)
+  surchargeAmount       Decimal               @default(0) @map("surcharge_amount") @db.Decimal(10, 2)
+  amount                Decimal               @db.Decimal(10, 2)
+  receivedAmount        Decimal               @default(0) @map("received_amount") @db.Decimal(10, 2)
+  paymentMethod         PaymentMethod?        @map("payment_method")
+  paidAt                DateTime?             @map("paid_at") @db.Timestamp(3)
+  notes                 String?               @db.Text
+  clinicalAppointmentId Int?                  @unique @map("clinical_appointment_id")
+  billingBatchId        Int?                  @unique @map("billing_batch_id")
+  createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamp(3)
+  clinicalAppointment   ClinicalAppointment?  @relation(fields: [clinicalAppointmentId], references: [id], onDelete: Restrict)
+  billingBatch          BillingBatch?         @relation(fields: [billingBatchId], references: [id], onDelete: Restrict)
+  items                 FinancialEntryItem[]
+
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+  @@index([paidAt])
+  @@map("financial_entries")
+}
+
+model FinancialEntryItem {
+  id               Int            @id @default(autoincrement())
+  financialEntryId Int            @map("financial_entry_id")
+  procedureId      Int            @map("procedure_id")
+  quantity         Int
+  unitValue        Decimal        @map("unit_value") @db.Decimal(10, 2)
+  description      String         @db.VarChar(150)
+  financialEntry   FinancialEntry @relation(fields: [financialEntryId], references: [id], onDelete: Cascade)
+  procedure        Procedure      @relation(fields: [procedureId], references: [id], onDelete: Restrict)
+
+  @@index([procedureId])
+  @@map("financial_entry_items")
+}
+
+model Payable {
+  id            Int                  @id @default(autoincrement())
+  supplierId    Int                  @map("supplier_id")
+  kind          PayableKind
+  description   String               @db.VarChar(255)
+  amount        Decimal              @db.Decimal(10, 2)
+  dueDate       DateTime             @map("due_date") @db.Date
+  invoiceNumber String?              @map("invoice_number") @db.VarChar(60)
+  notes         String?              @db.Text
+  status        PayableStatus        @default(pending)
+  paidAt        DateTime?            @map("paid_at") @db.Timestamp(3)
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamp(3)
+  supplier      Supplier             @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  documents     FinancialDocument[]
+  financialExit FinancialExit?
+
+  @@index([supplierId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("payables")
+}
+
+model FinancialExit {
+  id            Int           @id @default(autoincrement())
+  payableId     Int           @unique @map("payable_id")
+  amount        Decimal       @db.Decimal(10, 2)
+  paymentMethod PaymentMethod @map("payment_method")
+  paidAt        DateTime      @map("paid_at") @db.Timestamp(3)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamp(3)
+  payable       Payable       @relation(fields: [payableId], references: [id], onDelete: Restrict)
+
+  @@index([paidAt])
+  @@index([paymentMethod])
+  @@map("financial_exits")
+}
+
+model FinancialDocument {
+  id           Int      @id @default(autoincrement())
+  payableId    Int      @map("payable_id")
+  originalName String   @map("original_name") @db.VarChar(255)
+  storageKey   String   @map("storage_key") @db.VarChar(500)
+  mimeType     String   @map("mime_type") @db.VarChar(100)
+  sizeBytes    Int      @map("size_bytes")
+  uploadedAt   DateTime @default(now()) @map("uploaded_at") @db.Timestamp(3)
+  payable      Payable  @relation(fields: [payableId], references: [id], onDelete: Cascade)
+
+  @@index([payableId])
+  @@map("financial_documents")
+}
+
+model BillingBatch {
+  id             Int                 @id @default(autoincrement())
+  healthPlanId   Int                 @map("health_plan_id")
+  status         BillingBatchStatus  @default(open)
+  billedAmount   Decimal             @map("billed_amount") @db.Decimal(10, 2)
+  receivedAmount Decimal             @default(0) @map("received_amount") @db.Decimal(10, 2)
+  billedAt       DateTime?           @map("billed_at") @db.Timestamp(3)
+  settledAt      DateTime?           @map("settled_at") @db.Timestamp(3)
+  protocolNumber String?             @map("protocol_number") @db.VarChar(80)
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamp(3)
+  healthPlan     HealthPlan          @relation(fields: [healthPlanId], references: [id], onDelete: Restrict)
+  guides         BillingBatchGuide[]
+  financialEntry FinancialEntry?
+
+  @@index([healthPlanId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("billing_batches")
+}
+
+model BillingBatchGuide {
+  id               Int            @id @default(autoincrement())
+  billingBatchId   Int            @map("billing_batch_id")
+  insuranceGuideId Int            @unique @map("insurance_guide_id")
+  billedAmount     Decimal        @map("billed_amount") @db.Decimal(10, 2)
+  receivedAmount   Decimal?       @map("received_amount") @db.Decimal(10, 2)
+  glosaReason      String?        @map("glosa_reason") @db.Text
+  billingBatch     BillingBatch   @relation(fields: [billingBatchId], references: [id], onDelete: Cascade)
+  insuranceGuide   InsuranceGuide @relation(fields: [insuranceGuideId], references: [id], onDelete: Restrict)
+
+  @@index([billingBatchId])
+  @@map("billing_batch_guides")
 }

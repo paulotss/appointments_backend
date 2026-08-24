@@ -54,9 +54,6 @@ export class InsuranceGuidesService {
         patientId: createInsuranceGuideDto.patientId,
         healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
         expirationDate,
-        ...(createInsuranceGuideDto.isBilled !== undefined && {
-          isBilled: createInsuranceGuideDto.isBilled,
-        }),
         ...(createInsuranceGuideDto.status !== undefined && {
           status: createInsuranceGuideDto.status,
         }),
@@ -81,7 +78,7 @@ export class InsuranceGuidesService {
   > {
     const page = query.page ?? 1;
     const limit = query.limit ?? 50;
-    const where = {
+    const where: Prisma.InsuranceGuideWhereInput = {
       ...(query.isBilled !== undefined && { isBilled: query.isBilled }),
       ...(query.status !== undefined && { status: query.status }),
       ...(query.patientId !== undefined && { patientId: query.patientId }),
@@ -90,6 +87,11 @@ export class InsuranceGuidesService {
       }),
       ...(query.healthPlanId !== undefined && {
         healthPlanId: query.healthPlanId,
+      }),
+      ...(query.availableForBilling === true && {
+        isBilled: false,
+        billingBatchGuide: { is: null },
+        procedures: { some: { usedQuantity: { gt: 0 } } },
       }),
     };
 
@@ -205,9 +207,6 @@ export class InsuranceGuidesService {
             }),
             ...(updateInsuranceGuideDto.expirationDate !== undefined && {
               expirationDate: new Date(updateInsuranceGuideDto.expirationDate),
-            }),
-            ...(updateInsuranceGuideDto.isBilled !== undefined && {
-              isBilled: updateInsuranceGuideDto.isBilled,
             }),
             ...(updateInsuranceGuideDto.status !== undefined && {
               status: updateInsuranceGuideDto.status,
