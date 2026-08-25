@@ -160,7 +160,6 @@ model HealthProfessionalSpecialty {
   id                   Int                @id @default(autoincrement())
   healthProfessionalId Int                @map("health_professional_id")
   specialtyId          Int                @map("specialty_id")
-  privatePrice         Decimal            @map("private_price") @db.Decimal(10, 2)
   healthProfessional   HealthProfessional @relation(fields: [healthProfessionalId], references: [id], onDelete: Cascade)
   specialty            Specialty          @relation(fields: [specialtyId], references: [id], onDelete: Restrict)
 

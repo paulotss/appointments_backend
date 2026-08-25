@@ -47,7 +47,6 @@ export class FinancialEntriesService {
       include: {
         financialEntry: true,
         procedures: { include: { procedure: true } },
-        healthProfessional: { include: { specialties: true } },
       },
     });
 
@@ -77,24 +76,12 @@ export class FinancialEntriesService {
       );
     }
 
-    const privatePriceBySpecialty = new Map(
-      appointment.healthProfessional.specialties.map((item) => [
-        item.specialtyId,
-        decimalToNumber(item.privatePrice),
-      ]),
-    );
-
-    const items = appointment.procedures.map((item) => {
-      const unitValue =
-        privatePriceBySpecialty.get(item.procedure.specialtyId) ??
-        decimalToNumber(item.procedure.value);
-      return {
-        procedureId: item.procedureId,
-        quantity: 1,
-        unitValue,
-        description: item.procedure.name,
-      };
-    });
+    const items = appointment.procedures.map((item) => ({
+      procedureId: item.procedureId,
+      quantity: 1,
+      unitValue: decimalToNumber(item.procedure.value),
+      description: item.procedure.name,
+    }));
 
     const grossAmount = items.reduce(
       (sum, item) => sum + item.unitValue * item.quantity,

@@ -35,7 +35,6 @@ describe('FinancialEntriesService.createPrivateEntry', () => {
       status: ClinicalAppointmentStatus.finished,
       financialEntry: null,
       procedures: [],
-      healthProfessional: { specialties: [] },
     });
     await expect(
       service.createPrivateEntry({
@@ -57,9 +56,6 @@ describe('FinancialEntriesService.createPrivateEntry', () => {
           procedure: { id: 3, name: 'Consulta', specialtyId: 1, value: 150 },
         },
       ],
-      healthProfessional: {
-        specialties: [{ specialtyId: 1, privatePrice: 200 }],
-      },
     });
     prisma.financialEntry.create.mockResolvedValue({ id: 1 });
 
@@ -82,16 +78,16 @@ describe('FinancialEntriesService.createPrivateEntry', () => {
     };
     expect(data.type).toBe(FinancialEntryType.private_procedure);
     expect(data.status).toBe(FinancialEntryStatus.paid);
-    expect(Number(data.grossAmount)).toBe(200);
+    expect(Number(data.grossAmount)).toBe(150);
     expect(Number(data.discountAmount)).toBe(20);
     expect(Number(data.surchargeAmount)).toBe(5);
-    expect(Number(data.amount)).toBe(185);
-    expect(Number(data.receivedAmount)).toBe(185);
+    expect(Number(data.amount)).toBe(135);
+    expect(Number(data.receivedAmount)).toBe(135);
     expect(data.items.create).toEqual([
       {
         procedureId: 3,
         quantity: 1,
-        unitValue: 200,
+        unitValue: 150,
         description: 'Consulta',
       },
     ]);

@@ -153,7 +153,7 @@ async function main() {
         isActive: true,
         specialties: {
           create: [
-            { specialtyId: cardiology.id, privatePrice: 350 },
+            { specialtyId: cardiology.id },
           ],
         },
       },
@@ -170,7 +170,7 @@ async function main() {
         isActive: true,
         specialties: {
           create: [
-            { specialtyId: generalClinic.id, privatePrice: 250 },
+            { specialtyId: generalClinic.id },
           ],
         },
       },
@@ -186,7 +186,7 @@ async function main() {
         isActive: false,
         specialties: {
           create: [
-            { specialtyId: dermatology.id, privatePrice: 180 },
+            { specialtyId: dermatology.id },
           ],
         },
       },
