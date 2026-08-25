@@ -8,7 +8,10 @@ import {
   IsEnum,
   IsInt,
   IsOptional,
+  IsString,
+  MaxLength,
   Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 import { InsuranceGuideProcedureInputDto } from './insurance-guide-procedure-input.dto';
@@ -45,6 +48,17 @@ export class UpdateInsuranceGuideDto {
   @ValidateNested({ each: true })
   @Type(() => InsuranceGuideProcedureInputDto)
   procedures?: InsuranceGuideProcedureInputDto[];
+
+  @ApiPropertyOptional({
+    example: '12345678901234567890',
+    description: 'Numero da guia. Envie null para limpar.',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(50)
+  guideNumber?: string | null;
 
   @ApiPropertyOptional({
     example: '2026-09-12',

@@ -54,6 +54,9 @@ export class InsuranceGuidesService {
         patientId: createInsuranceGuideDto.patientId,
         healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
         expirationDate,
+        ...(createInsuranceGuideDto.guideNumber !== undefined && {
+          guideNumber: createInsuranceGuideDto.guideNumber,
+        }),
         ...(createInsuranceGuideDto.status !== undefined && {
           status: createInsuranceGuideDto.status,
         }),
@@ -207,6 +210,9 @@ export class InsuranceGuidesService {
             }),
             ...(updateInsuranceGuideDto.expirationDate !== undefined && {
               expirationDate: new Date(updateInsuranceGuideDto.expirationDate),
+            }),
+            ...(updateInsuranceGuideDto.guideNumber !== undefined && {
+              guideNumber: updateInsuranceGuideDto.guideNumber,
             }),
             ...(updateInsuranceGuideDto.status !== undefined && {
               status: updateInsuranceGuideDto.status,

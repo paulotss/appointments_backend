@@ -26,7 +26,7 @@ export class InsuranceGuidesController {
   @ApiOperation({
     summary: 'Criar guia de plano de saude',
     description:
-      'Cria a guia com status=pending e isBilled=false. O faturamento so ocorre via lote (billing-batches). Envie procedures com quantidade autorizada por item.',
+      'Cria a guia com status=pending e isBilled=false. O faturamento so ocorre via lote (billing-batches). Envie procedures com quantidade autorizada por item. guideNumber e opcional.',
   })
   create(@Body() createInsuranceGuideDto: CreateInsuranceGuideDto) {
     return this.insuranceGuidesService.create(createInsuranceGuideDto);
@@ -53,7 +53,7 @@ export class InsuranceGuidesController {
   @ApiOperation({
     summary: 'Atualizar guia',
     description:
-      'Permite atualizar status e procedimentos (quantidade autorizada por item). isBilled nao e mais gravavel aqui.',
+      'Permite atualizar status, numero da guia e procedimentos (quantidade autorizada por item). isBilled nao e mais gravavel aqui.',
   })
   @ApiParam({ name: 'id', example: 1 })
   update(
