@@ -8,7 +8,7 @@ export class CreateHealthProfessionalDto {
 
   @ApiProperty({
     type: [HealthProfessionalSpecialtyInputDto],
-    example: [{ specialtyId: 1, privatePrice: 250 }],
+    example: [{ specialtyId: 1 }],
   })
   specialties!: HealthProfessionalSpecialtyInputDto[];
 

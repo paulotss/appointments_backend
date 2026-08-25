@@ -28,7 +28,10 @@ export class UpdateProcedureDto {
   @MaxLength(150)
   name?: string;
 
-  @ApiPropertyOptional({ example: 150.0 })
+  @ApiPropertyOptional({
+    example: 150.0,
+    description: 'Preco padrao particular',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })

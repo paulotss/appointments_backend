@@ -64,6 +64,17 @@ export class ListInsuranceGuidesQueryDto {
   @Min(1)
   healthPlanId?: number;
 
+  @ApiPropertyOptional({
+    type: Boolean,
+    example: true,
+    description:
+      'Se true, lista apenas guias elegiveis para lote: isBilled=false, fora de lote e com usedQuantity > 0',
+  })
+  @IsOptional()
+  @Transform(toOptionalBoolean)
+  @IsBoolean()
+  availableForBilling?: boolean;
+
   @ApiPropertyOptional({ example: 1, default: 1 })
   @IsOptional()
   @Type(() => Number)

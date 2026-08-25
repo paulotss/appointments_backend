@@ -4,12 +4,14 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
-  IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
   IsOptional,
+  IsString,
+  MaxLength,
   Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 import { InsuranceGuideProcedureInputDto } from './insurance-guide-procedure-input.dto';
@@ -44,6 +46,16 @@ export class CreateInsuranceGuideDto {
   procedures!: InsuranceGuideProcedureInputDto[];
 
   @ApiPropertyOptional({
+    example: '12345678901234567890',
+    description: 'Numero da guia (opcional)',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(50)
+  guideNumber?: string;
+
+  @ApiPropertyOptional({
     example: '2026-09-12',
     description:
       'Data de validade da guia (YYYY-MM-DD). Se omitida, usa hoje + submissionDeadlineDays do plano',
@@ -51,16 +63,6 @@ export class CreateInsuranceGuideDto {
   @IsOptional()
   @IsDateString()
   expirationDate?: string;
-
-  @ApiPropertyOptional({
-    type: Boolean,
-    example: false,
-    default: false,
-    description: 'Indica se a guia ja foi faturada. Padrao false',
-  })
-  @IsOptional()
-  @IsBoolean()
-  isBilled?: boolean;
 
   @ApiPropertyOptional({
     enum: InsuranceGuideStatus,

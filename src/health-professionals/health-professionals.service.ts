@@ -44,7 +44,6 @@ export class HealthProfessionalsService {
         specialties: {
           create: createHealthProfessionalDto.specialties.map((item) => ({
             specialtyId: item.specialtyId,
-            privatePrice: item.privatePrice,
           })),
         },
       },
@@ -118,7 +117,6 @@ export class HealthProfessionalsService {
           data: updateHealthProfessionalDto.specialties.map((item) => ({
             healthProfessionalId: id,
             specialtyId: item.specialtyId,
-            privatePrice: item.privatePrice,
           })),
         });
       }

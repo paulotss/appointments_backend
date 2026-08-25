@@ -3,15 +3,19 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { AuthModule } from './auth/auth.module';
+import { BillingBatchesModule } from './billing-batches/billing-batches.module';
 import { CallsModule } from './calls/calls.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ClinicalAppointmentsModule } from './clinical-appointments/clinical-appointments.module';
+import { FinancialEntriesModule } from './financial-entries/financial-entries.module';
+import { FinancialExitsModule } from './financial-exits/financial-exits.module';
 import { HealthPlansModule } from './health-plans/health-plans.module';
 import { HealthProfessionalsModule } from './health-professionals/health-professionals.module';
 import { InsuranceCardsModule } from './insurance-cards/insurance-cards.module';
 import { InsuranceGuidesModule } from './insurance-guides/insurance-guides.module';
 import { MessagesModule } from './messages/messages.module';
 import { PatientsModule } from './patients/patients.module';
+import { PayablesModule } from './payables/payables.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProceduresModule } from './procedures/procedures.module';
 import { ProductsModule } from './products/products.module';
@@ -46,6 +50,10 @@ import { UsersModule } from './users/users.module';
     SuppliersModule,
     StockBatchesModule,
     StockExitsModule,
+    BillingBatchesModule,
+    FinancialEntriesModule,
+    PayablesModule,
+    FinancialExitsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
