@@ -12,7 +12,7 @@ export class FinancialExitsController {
   @ApiOperation({
     summary: 'Listar saidas financeiras',
     description:
-      'Filtros: supplierId, from, to, paymentMethod. Paginado com page/limit.',
+      'Filtros: supplierId, from, to, paymentMethod. Paginado com page/limit. counts traz amount do filtro.',
   })
   findAll(@Query() query: ListFinancialExitsQueryDto) {
     return this.financialExitsService.findAll(query);

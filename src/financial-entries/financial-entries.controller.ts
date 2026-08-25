@@ -34,7 +34,8 @@ export class FinancialEntriesController {
   @Get()
   @ApiOperation({
     summary: 'Listar entradas financeiras',
-    description: 'Filtros: type, status, from, to. Paginado com page/limit.',
+    description:
+      'Filtros: type, status, from, to. Paginado com page/limit. counts traz amount e receivedAmount do filtro.',
   })
   findAll(@Query() query: ListFinancialEntriesQueryDto) {
     return this.financialEntriesService.findAll(query);

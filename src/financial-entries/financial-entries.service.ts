@@ -127,7 +127,8 @@ export class FinancialEntriesService {
     query: ListFinancialEntriesQueryDto,
   ): Promise<
     ListEnvelope<
-      Prisma.FinancialEntryGetPayload<{ include: typeof financialEntryInclude }>
+      Prisma.FinancialEntryGetPayload<{ include: typeof financialEntryInclude }>,
+      { amount: number; receivedAmount: number }
     >
   > {
     const page = query.page ?? 1;
@@ -150,7 +151,7 @@ export class FinancialEntriesService {
       ...(createdAt !== undefined && { createdAt }),
     };
 
-    const [data, total] = await Promise.all([
+    const [data, total, sums] = await Promise.all([
       this.prisma.financialEntry.findMany({
         where,
         include: financialEntryInclude,
@@ -159,9 +160,20 @@ export class FinancialEntriesService {
         take: limit,
       }),
       this.prisma.financialEntry.count({ where }),
+      this.prisma.financialEntry.aggregate({
+        where,
+        _sum: { amount: true, receivedAmount: true },
+      }),
     ]);
 
-    return { data, meta: buildListMeta(page, limit, total) };
+    return {
+      data,
+      meta: buildListMeta(page, limit, total),
+      counts: {
+        amount: decimalToNumber(sums._sum.amount ?? 0),
+        receivedAmount: decimalToNumber(sums._sum.receivedAmount ?? 0),
+      },
+    };
   }
 
   async findOne(id: number) {

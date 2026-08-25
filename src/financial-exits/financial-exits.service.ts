@@ -8,6 +8,7 @@ import {
   buildListMeta,
   ListEnvelope,
 } from '../common/pagination/list-envelope';
+import { decimalToNumber } from '../finance/money';
 import { PrismaService } from '../prisma/prisma.service';
 import { ListFinancialExitsQueryDto } from './dto/list-financial-exits-query.dto';
 
@@ -23,7 +24,8 @@ export class FinancialExitsService {
     query: ListFinancialExitsQueryDto,
   ): Promise<
     ListEnvelope<
-      Prisma.FinancialExitGetPayload<{ include: typeof financialExitInclude }>
+      Prisma.FinancialExitGetPayload<{ include: typeof financialExitInclude }>,
+      { amount: number }
     >
   > {
     const page = query.page ?? 1;
@@ -50,7 +52,7 @@ export class FinancialExitsService {
       }),
     };
 
-    const [data, total] = await Promise.all([
+    const [data, total, sums] = await Promise.all([
       this.prisma.financialExit.findMany({
         where,
         include: financialExitInclude,
@@ -59,9 +61,19 @@ export class FinancialExitsService {
         take: limit,
       }),
       this.prisma.financialExit.count({ where }),
+      this.prisma.financialExit.aggregate({
+        where,
+        _sum: { amount: true },
+      }),
     ]);
 
-    return { data, meta: buildListMeta(page, limit, total) };
+    return {
+      data,
+      meta: buildListMeta(page, limit, total),
+      counts: {
+        amount: decimalToNumber(sums._sum.amount ?? 0),
+      },
+    };
   }
 
   async findOne(id: number) {
