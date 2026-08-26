@@ -229,6 +229,7 @@ export class ClinicalAppointmentsService {
             insuranceGuideIds: nextGuideIds,
             patientId: nextPatientId,
             healthProfessionalId: nextProfessionalId,
+            alreadyAssociatedIds: existingGuideIds,
           })
         : [];
 
@@ -514,7 +515,9 @@ export class ClinicalAppointmentsService {
     insuranceGuideIds: number[];
     patientId: number;
     healthProfessionalId: number;
+    alreadyAssociatedIds?: number[];
   }): Promise<GuideForAppointment[]> {
+    const alreadyAssociated = new Set(params.alreadyAssociatedIds ?? []);
     const guides = await this.prisma.insuranceGuide.findMany({
       where: { id: { in: params.insuranceGuideIds } },
       include: guideForAppointmentInclude,
@@ -539,13 +542,15 @@ export class ClinicalAppointmentsService {
         );
       }
 
-      if (guide.isBilled) {
+      const isNewAssociation = !alreadyAssociated.has(guide.id);
+
+      if (isNewAssociation && guide.isBilled) {
         throw new BadRequestException(
           `Insurance guide ${guide.id} is already billed`,
         );
       }
 
-      if (guide.billingBatchGuide) {
+      if (isNewAssociation && guide.billingBatchGuide) {
         throw new BadRequestException(
           `Insurance guide ${guide.id} is already in a billing batch`,
         );
