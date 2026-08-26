@@ -81,6 +81,7 @@ export class ClinicalAppointmentsService {
           endsAt,
           status,
           type: ClinicalAppointmentType.private,
+          notes: createDto.notes,
           procedures: {
             create: procedureIds.map((procedureId) => ({ procedureId })),
           },
@@ -116,6 +117,7 @@ export class ClinicalAppointmentsService {
           endsAt,
           status,
           type: ClinicalAppointmentType.health_plan,
+          notes: createDto.notes,
           insuranceGuides: {
             create: insuranceGuideIds.map((insuranceGuideId) => ({
               insuranceGuideId,
@@ -287,6 +289,7 @@ export class ClinicalAppointmentsService {
           endsAt: nextEndsAt,
           status: nextStatus,
           type: nextType,
+          ...(updateDto.notes !== undefined && { notes: updateDto.notes }),
         },
       });
 

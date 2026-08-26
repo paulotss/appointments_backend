@@ -11,6 +11,7 @@ import {
   IsEnum,
   IsInt,
   IsOptional,
+  IsString,
   Min,
 } from 'class-validator';
 
@@ -59,6 +60,14 @@ export class CreateClinicalAppointmentDto {
   @IsOptional()
   @IsEnum(ClinicalAppointmentStatus)
   status?: ClinicalAppointmentStatus;
+
+  @ApiPropertyOptional({
+    example: 'Paciente solicitou horario no periodo da manha',
+    description: 'Observacoes do agendamento clinico',
+  })
+  @IsOptional()
+  @IsString()
+  notes?: string;
 
   @ApiPropertyOptional({
     type: [Number],
