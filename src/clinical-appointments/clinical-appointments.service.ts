@@ -81,6 +81,7 @@ export class ClinicalAppointmentsService {
           endsAt,
           status,
           type: ClinicalAppointmentType.private,
+          notes: createDto.notes,
           procedures: {
             create: procedureIds.map((procedureId) => ({ procedureId })),
           },
@@ -116,6 +117,7 @@ export class ClinicalAppointmentsService {
           endsAt,
           status,
           type: ClinicalAppointmentType.health_plan,
+          notes: createDto.notes,
           insuranceGuides: {
             create: insuranceGuideIds.map((insuranceGuideId) => ({
               insuranceGuideId,
@@ -227,6 +229,7 @@ export class ClinicalAppointmentsService {
             insuranceGuideIds: nextGuideIds,
             patientId: nextPatientId,
             healthProfessionalId: nextProfessionalId,
+            alreadyAssociatedIds: existingGuideIds,
           })
         : [];
 
@@ -287,6 +290,7 @@ export class ClinicalAppointmentsService {
           endsAt: nextEndsAt,
           status: nextStatus,
           type: nextType,
+          ...(updateDto.notes !== undefined && { notes: updateDto.notes }),
         },
       });
 
@@ -511,7 +515,9 @@ export class ClinicalAppointmentsService {
     insuranceGuideIds: number[];
     patientId: number;
     healthProfessionalId: number;
+    alreadyAssociatedIds?: number[];
   }): Promise<GuideForAppointment[]> {
+    const alreadyAssociated = new Set(params.alreadyAssociatedIds ?? []);
     const guides = await this.prisma.insuranceGuide.findMany({
       where: { id: { in: params.insuranceGuideIds } },
       include: guideForAppointmentInclude,
@@ -536,13 +542,15 @@ export class ClinicalAppointmentsService {
         );
       }
 
-      if (guide.isBilled) {
+      const isNewAssociation = !alreadyAssociated.has(guide.id);
+
+      if (isNewAssociation && guide.isBilled) {
         throw new BadRequestException(
           `Insurance guide ${guide.id} is already billed`,
         );
       }
 
-      if (guide.billingBatchGuide) {
+      if (isNewAssociation && guide.billingBatchGuide) {
         throw new BadRequestException(
           `Insurance guide ${guide.id} is already in a billing batch`,
         );

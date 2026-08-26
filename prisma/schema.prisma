@@ -286,6 +286,7 @@ model ClinicalAppointment {
   endsAt               DateTime                       @map("ends_at") @db.Timestamp(3)
   status               ClinicalAppointmentStatus      @default(marked)
   type                 ClinicalAppointmentType
+  notes                String?                        @db.Text
   patient              Patient                        @relation(fields: [patientId], references: [id], onDelete: Restrict)
   healthProfessional   HealthProfessional             @relation(fields: [healthProfessionalId], references: [id], onDelete: Restrict)
   insuranceGuides      ClinicalAppointmentGuide[]
