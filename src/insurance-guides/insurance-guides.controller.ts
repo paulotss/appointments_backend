@@ -10,6 +10,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { BillingBatchesService } from '../billing-batches/billing-batches.service';
 import { CreateInsuranceGuideDto } from './dto/create-insurance-guide.dto';
 import { ListInsuranceGuidesQueryDto } from './dto/list-insurance-guides-query.dto';
 import { UpdateInsuranceGuideDto } from './dto/update-insurance-guide.dto';
@@ -20,13 +21,14 @@ import { InsuranceGuidesService } from './insurance-guides.service';
 export class InsuranceGuidesController {
   constructor(
     private readonly insuranceGuidesService: InsuranceGuidesService,
+    private readonly billingBatchesService: BillingBatchesService,
   ) {}
 
   @Post()
   @ApiOperation({
     summary: 'Criar guia de plano de saude',
     description:
-      'Cria a guia com status=pending e isBilled=false. O faturamento so ocorre via lote (billing-batches). Envie procedures com quantidade autorizada por item. guideNumber e opcional.',
+      'Cria a guia com status=pending e isBilled=false. O faturamento ocorre via lote (billing-batches) ou pela guia individual (POST /insurance-guides/:id/bill). Envie procedures com quantidade autorizada por item. guideNumber e opcional.',
   })
   create(@Body() createInsuranceGuideDto: CreateInsuranceGuideDto) {
     return this.insuranceGuidesService.create(createInsuranceGuideDto);
@@ -47,6 +49,17 @@ export class InsuranceGuidesController {
   @ApiParam({ name: 'id', example: 1 })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.insuranceGuidesService.findOne(id);
+  }
+
+  @Post(':id/bill')
+  @ApiOperation({
+    summary: 'Faturar guia individualmente',
+    description:
+      'Cria um lote com esta unica guia, marca isBilled=true e gera a entrada financeira health_plan pendente. A guia precisa estar elegivel (nao faturada, fora de lote e com usedQuantity > 0).',
+  })
+  @ApiParam({ name: 'id', example: 1 })
+  bill(@Param('id', ParseIntPipe) id: number) {
+    return this.billingBatchesService.billGuide(id);
   }
 
   @Patch(':id')

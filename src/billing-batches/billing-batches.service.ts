@@ -225,6 +225,62 @@ export class BillingBatchesService {
     return this.findOne(id);
   }
 
+  async billGuide(guideId: number) {
+    const guide = await this.prisma.insuranceGuide.findUnique({
+      where: { id: guideId },
+      select: { id: true, healthPlanId: true },
+    });
+    if (!guide) {
+      throw new NotFoundException(`Insurance guide ${guideId} not found`);
+    }
+
+    const [snapshot] = await this.loadEligibleGuides(
+      [guideId],
+      guide.healthPlanId,
+    );
+    if (!snapshot) {
+      throw new NotFoundException(`Insurance guide ${guideId} not found`);
+    }
+    const billedAmount = centsToMoney(snapshot.billedCents);
+    if (billedAmount <= 0) {
+      throw new BadRequestException('Cannot bill a batch with zero amount');
+    }
+
+    const batchId = await this.prisma.$transaction(async (tx) => {
+      const batch = await tx.billingBatch.create({
+        data: {
+          healthPlanId: guide.healthPlanId,
+          billedAmount,
+          status: BillingBatchStatus.billed,
+          billedAt: new Date(),
+          guides: {
+            create: {
+              insuranceGuideId: guide.id,
+              billedAmount,
+            },
+          },
+        },
+      });
+      await tx.insuranceGuide.update({
+        where: { id: guide.id },
+        data: { isBilled: true },
+      });
+      await tx.financialEntry.create({
+        data: {
+          type: FinancialEntryType.health_plan,
+          status: FinancialEntryStatus.pending,
+          grossAmount: billedAmount,
+          amount: billedAmount,
+          receivedAmount: 0,
+          billingBatchId: batch.id,
+        },
+      });
+      return batch.id;
+    });
+
+    return this.findOne(batchId);
+  }
+
   async receive(id: number, dto: ReceiveBillingBatchDto) {
     const batch = await this.findOne(id);
     if (batch.status !== BillingBatchStatus.billed) {
