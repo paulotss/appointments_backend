@@ -23,6 +23,7 @@ const guideInclude = {
       procedure: { include: { specialty: true, healthPlanPrices: true } },
     },
   },
+  billingBatchGuide: { select: { billingBatchId: true } },
 } as const;
 
 @Injectable()

@@ -5,5 +5,6 @@ import { BillingBatchesService } from './billing-batches.service';
 @Module({
   controllers: [BillingBatchesController],
   providers: [BillingBatchesService],
+  exports: [BillingBatchesService],
 })
 export class BillingBatchesModule {}
