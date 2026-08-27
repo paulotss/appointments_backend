@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 import {
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -12,6 +13,17 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+
+export const PAYABLE_SORT_FIELDS = [
+  'description',
+  'supplier',
+  'kind',
+  'amount',
+  'dueDate',
+  'status',
+] as const;
+
+export type PayableSortField = (typeof PAYABLE_SORT_FIELDS)[number];
 
 export class CreatePayableDto {
   @ApiProperty({ example: 1 })
@@ -119,6 +131,32 @@ export class ListPayablesQueryDto {
   @IsInt()
   @Min(1)
   supplierId?: number;
+
+  @ApiPropertyOptional({
+    example: '2026-08-01',
+    description: 'Vencimento inicial (YYYY-MM-DD, inclusivo)',
+  })
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-08-31',
+    description: 'Vencimento final (YYYY-MM-DD, inclusivo)',
+  })
+  @IsOptional()
+  @IsDateString()
+  to?: string;
+
+  @ApiPropertyOptional({ enum: PAYABLE_SORT_FIELDS, example: 'dueDate' })
+  @IsOptional()
+  @IsIn(PAYABLE_SORT_FIELDS)
+  sortBy?: PayableSortField;
+
+  @ApiPropertyOptional({ enum: ['asc', 'desc'], example: 'asc' })
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortOrder?: 'asc' | 'desc';
 
   @ApiPropertyOptional({ example: 1, default: 1 })
   @IsOptional()

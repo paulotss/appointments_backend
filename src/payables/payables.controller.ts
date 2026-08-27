@@ -43,7 +43,8 @@ export class PayablesController {
   @Get()
   @ApiOperation({
     summary: 'Listar contas a pagar',
-    description: 'Filtros: status, supplierId. Paginado com page/limit.',
+    description:
+      'Filtros: status, supplierId, from/to (vencimento). Ordenação: sortBy, sortOrder. Paginado com page/limit.',
   })
   findAll(@Query() query: ListPayablesQueryDto) {
     return this.payablesService.findAll(query);

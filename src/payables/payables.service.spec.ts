@@ -8,6 +8,8 @@ describe('PayablesService.pay', () => {
     payable: {
       findUnique: jest.fn(),
       update: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
     },
     financialExit: { create: jest.fn() },
     $transaction: jest.fn(),
@@ -63,6 +65,63 @@ describe('PayablesService.pay', () => {
     expect(prisma.payable.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ status: PayableStatus.paid }),
+      }),
+    );
+  });
+});
+
+describe('PayablesService.findAll', () => {
+  const prisma = {
+    payable: {
+      findUnique: jest.fn(),
+      update: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
+    },
+    financialExit: { create: jest.fn() },
+    $transaction: jest.fn(),
+  };
+  const fileStorage = { remove: jest.fn() };
+  const service = new PayablesService(prisma as never, fileStorage as never);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.payable.findMany.mockResolvedValue([]);
+    prisma.payable.count.mockResolvedValue(0);
+  });
+
+  it('filters by due date range and keeps default order', async () => {
+    await service.findAll({ from: '2026-08-01', to: '2026-08-31' });
+
+    expect(prisma.payable.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          dueDate: {
+            gte: new Date('2026-08-01'),
+            lte: new Date('2026-08-31'),
+          },
+        },
+        orderBy: [{ id: 'desc' }],
+      }),
+    );
+  });
+
+  it('orders by supplier trade name when requested', async () => {
+    await service.findAll({ sortBy: 'supplier', sortOrder: 'asc' });
+
+    expect(prisma.payable.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ supplier: { tradeName: 'asc' } }, { id: 'desc' }],
+      }),
+    );
+  });
+
+  it('orders by due date descending when requested', async () => {
+    await service.findAll({ sortBy: 'dueDate', sortOrder: 'desc' });
+
+    expect(prisma.payable.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ dueDate: 'desc' }, { id: 'desc' }],
       }),
     );
   });
