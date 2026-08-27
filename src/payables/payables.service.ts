@@ -17,6 +17,7 @@ import {
   ListPayablesQueryDto,
   PayPayableDto,
   UpdatePayableDto,
+  type PayableSortField,
 } from './dto/payable.dto';
 
 const ALLOWED_MIME_TYPES = new Set([
@@ -30,6 +31,46 @@ const payableInclude = {
   documents: true,
   financialExit: true,
 } as const;
+
+function dueDateFilter(
+  from?: string,
+  to?: string,
+): Prisma.DateTimeFilter | undefined {
+  if (from === undefined && to === undefined) {
+    return undefined;
+  }
+  return {
+    ...(from !== undefined && { gte: new Date(from.slice(0, 10)) }),
+    ...(to !== undefined && { lte: new Date(to.slice(0, 10)) }),
+  };
+}
+
+function payableOrderBy(
+  sortBy?: PayableSortField,
+  sortOrder?: 'asc' | 'desc',
+): Prisma.PayableOrderByWithRelationInput[] {
+  if (sortBy === undefined) {
+    return [{ id: 'desc' }];
+  }
+  const direction = sortOrder ?? 'asc';
+  const primary: Prisma.PayableOrderByWithRelationInput = (() => {
+    switch (sortBy) {
+      case 'supplier':
+        return { supplier: { tradeName: direction } };
+      case 'description':
+        return { description: direction };
+      case 'kind':
+        return { kind: direction };
+      case 'amount':
+        return { amount: direction };
+      case 'dueDate':
+        return { dueDate: direction };
+      case 'status':
+        return { status: direction };
+    }
+  })();
+  return [primary, { id: 'desc' }];
+}
 
 @Injectable()
 export class PayablesService {
@@ -61,16 +102,18 @@ export class PayablesService {
   > {
     const page = query.page ?? 1;
     const limit = query.limit ?? 50;
+    const dueDate = dueDateFilter(query.from, query.to);
     const where: Prisma.PayableWhereInput = {
       ...(query.status !== undefined && { status: query.status }),
       ...(query.supplierId !== undefined && { supplierId: query.supplierId }),
+      ...(dueDate !== undefined && { dueDate }),
     };
 
     const [data, total] = await Promise.all([
       this.prisma.payable.findMany({
         where,
         include: payableInclude,
-        orderBy: { id: 'desc' },
+        orderBy: payableOrderBy(query.sortBy, query.sortOrder),
         skip: (page - 1) * limit,
         take: limit,
       }),
