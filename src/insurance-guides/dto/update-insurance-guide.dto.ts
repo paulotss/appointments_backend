@@ -51,7 +51,7 @@ export class UpdateInsuranceGuideDto {
 
   @ApiPropertyOptional({
     example: '12345678901234567890',
-    description: 'Numero da guia. Envie null para limpar.',
+    description: 'Numero da guia (unico). Envie null para limpar.',
     nullable: true,
   })
   @IsOptional()
@@ -59,6 +59,14 @@ export class UpdateInsuranceGuideDto {
   @MinLength(1)
   @MaxLength(50)
   guideNumber?: string | null;
+
+  @ApiPropertyOptional({
+    example: '2026-09-01',
+    description: 'Data de autorizacao da guia (YYYY-MM-DD)',
+  })
+  @IsOptional()
+  @IsDateString()
+  authorizationDate?: string;
 
   @ApiPropertyOptional({
     example: '2026-09-12',

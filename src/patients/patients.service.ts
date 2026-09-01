@@ -14,6 +14,13 @@ function digitsOnly(value: string): string {
   return value.replace(/\D/g, '');
 }
 
+const patientDetailInclude = {
+  insuranceCards: {
+    include: { healthPlan: true },
+    orderBy: { id: 'asc' as const },
+  },
+} as const;
+
 @Injectable()
 export class PatientsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -29,6 +36,7 @@ export class PatientsService {
           : null,
         cpf: createPatientDto.cpf ? digitsOnly(createPatientDto.cpf) : null,
       },
+      include: patientDetailInclude,
     });
   }
 
@@ -58,7 +66,10 @@ export class PatientsService {
   }
 
   async findOne(id: number) {
-    const patient = await this.prisma.patient.findUnique({ where: { id } });
+    const patient = await this.prisma.patient.findUnique({
+      where: { id },
+      include: patientDetailInclude,
+    });
 
     if (!patient) {
       throw new NotFoundException(`Patient ${id} not found`);
@@ -91,6 +102,7 @@ export class PatientsService {
           cpf: updatePatientDto.cpf ? digitsOnly(updatePatientDto.cpf) : null,
         }),
       },
+      include: patientDetailInclude,
     });
   }
 

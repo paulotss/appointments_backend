@@ -1,9 +1,10 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, TissGuideType } from '@prisma/client';
 import {
   buildListMeta,
   ListEnvelope,
@@ -38,39 +39,53 @@ export class InsuranceGuidesService {
     await this.ensureHealthProfessionalExists(
       createInsuranceGuideDto.healthProfessionalId,
     );
-    const procedureValues = await this.ensureGuideProceduresValid({
-      healthPlanId: createInsuranceGuideDto.healthPlanId,
-      healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
-      procedures: createInsuranceGuideDto.procedures,
-    });
+    const { values: procedureValues, tissGuideType } =
+      await this.ensureGuideProceduresValid({
+        healthPlanId: createInsuranceGuideDto.healthPlanId,
+        healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
+        procedures: createInsuranceGuideDto.procedures,
+      });
 
+    const authorizationDate =
+      createInsuranceGuideDto.authorizationDate !== undefined
+        ? new Date(createInsuranceGuideDto.authorizationDate)
+        : this.startOfUtcDay();
     const expirationDate =
       createInsuranceGuideDto.expirationDate !== undefined
         ? new Date(createInsuranceGuideDto.expirationDate)
-        : this.defaultExpirationDate(healthPlan.submissionDeadlineDays);
+        : this.addUtcDays(authorizationDate, healthPlan.submissionDeadlineDays);
 
-    return this.prisma.insuranceGuide.create({
-      data: {
-        healthPlanId: createInsuranceGuideDto.healthPlanId,
-        patientId: createInsuranceGuideDto.patientId,
-        healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
-        expirationDate,
-        ...(createInsuranceGuideDto.guideNumber !== undefined && {
-          guideNumber: createInsuranceGuideDto.guideNumber,
-        }),
-        ...(createInsuranceGuideDto.status !== undefined && {
-          status: createInsuranceGuideDto.status,
-        }),
-        procedures: {
-          create: createInsuranceGuideDto.procedures.map((item) => ({
-            procedureId: item.procedureId,
-            authorizedQuantity: item.authorizedQuantity,
-            value: item.value ?? procedureValues.get(item.procedureId)!,
-          })),
+    try {
+      return await this.prisma.insuranceGuide.create({
+        data: {
+          healthPlanId: createInsuranceGuideDto.healthPlanId,
+          patientId: createInsuranceGuideDto.patientId,
+          healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
+          authorizationDate,
+          expirationDate,
+          tissGuideType,
+          ...(createInsuranceGuideDto.guideNumber !== undefined && {
+            guideNumber: this.normalizeGuideNumber(
+              createInsuranceGuideDto.guideNumber,
+            ),
+          }),
+          ...(createInsuranceGuideDto.status !== undefined && {
+            status: createInsuranceGuideDto.status,
+          }),
+          procedures: {
+            create: createInsuranceGuideDto.procedures.map((item) => ({
+              procedureId: item.procedureId,
+              authorizedQuantity: item.authorizedQuantity,
+              value: item.value ?? procedureValues.get(item.procedureId)!,
+            })),
+          },
         },
-      },
-      include: guideInclude,
-    });
+        include: guideInclude,
+      });
+    } catch (error) {
+      this.rethrowKnownPrismaError(error);
+      throw error;
+    }
   }
 
   async findAll(
@@ -164,12 +179,15 @@ export class InsuranceGuidesService {
       updateInsuranceGuideDto.healthProfessionalId !== undefined;
 
     let procedureValues = new Map<number, Prisma.Decimal>();
+    let tissGuideType = existing.tissGuideType;
     if (shouldRevalidateProcedures) {
-      procedureValues = await this.ensureGuideProceduresValid({
+      const validated = await this.ensureGuideProceduresValid({
         healthPlanId,
         healthProfessionalId,
         procedures,
       });
+      procedureValues = validated.values;
+      tissGuideType = validated.tissGuideType;
     }
 
     try {
@@ -209,15 +227,23 @@ export class InsuranceGuidesService {
               healthProfessionalId:
                 updateInsuranceGuideDto.healthProfessionalId,
             }),
+            ...(updateInsuranceGuideDto.authorizationDate !== undefined && {
+              authorizationDate: new Date(
+                updateInsuranceGuideDto.authorizationDate,
+              ),
+            }),
             ...(updateInsuranceGuideDto.expirationDate !== undefined && {
               expirationDate: new Date(updateInsuranceGuideDto.expirationDate),
             }),
             ...(updateInsuranceGuideDto.guideNumber !== undefined && {
-              guideNumber: updateInsuranceGuideDto.guideNumber,
+              guideNumber: this.normalizeGuideNumber(
+                updateInsuranceGuideDto.guideNumber,
+              ),
             }),
             ...(updateInsuranceGuideDto.status !== undefined && {
               status: updateInsuranceGuideDto.status,
             }),
+            ...(shouldRevalidateProcedures && { tissGuideType }),
           },
           include: guideInclude,
         });
@@ -352,7 +378,10 @@ export class InsuranceGuidesService {
     healthPlanId: number;
     healthProfessionalId: number;
     procedures: InsuranceGuideProcedureInputDto[];
-  }): Promise<Map<number, Prisma.Decimal>> {
+  }): Promise<{
+    values: Map<number, Prisma.Decimal>;
+    tissGuideType: TissGuideType;
+  }> {
     const procedureIds = params.procedures.map((item) => item.procedureId);
     const uniqueIds = new Set(procedureIds);
     if (uniqueIds.size !== procedureIds.length) {
@@ -363,13 +392,26 @@ export class InsuranceGuidesService {
 
     const dbProcedures = await this.prisma.procedure.findMany({
       where: { id: { in: procedureIds } },
-      select: { id: true, specialtyId: true },
+      select: { id: true, specialtyId: true, tissGuideType: true },
     });
 
     if (dbProcedures.length !== uniqueIds.size) {
       const found = new Set(dbProcedures.map((item) => item.id));
       const missing = procedureIds.find((id) => !found.has(id));
       throw new NotFoundException(`Procedure ${missing} not found`);
+    }
+
+    const types = new Set(dbProcedures.map((item) => item.tissGuideType));
+    if (types.size !== 1) {
+      throw new BadRequestException(
+        'procedures cannot mix consulta and sp_sadt tissGuideType',
+      );
+    }
+    const tissGuideType = dbProcedures[0]!.tissGuideType;
+    if (tissGuideType === 'consulta' && params.procedures.length !== 1) {
+      throw new BadRequestException(
+        'consulta guides must contain exactly one procedure',
+      );
     }
 
     const professionalSpecialties =
@@ -404,14 +446,22 @@ export class InsuranceGuidesService {
       );
     }
 
-    return new Map(priced.map((item) => [item.procedureId, item.value]));
+    return {
+      values: new Map(priced.map((item) => [item.procedureId, item.value])),
+      tissGuideType,
+    };
   }
 
-  private defaultExpirationDate(submissionDeadlineDays: number): Date {
-    const date = new Date();
-    date.setUTCHours(0, 0, 0, 0);
-    date.setUTCDate(date.getUTCDate() + submissionDeadlineDays);
-    return date;
+  private startOfUtcDay(date = new Date()): Date {
+    const result = new Date(date);
+    result.setUTCHours(0, 0, 0, 0);
+    return result;
+  }
+
+  private addUtcDays(date: Date, days: number): Date {
+    const result = this.startOfUtcDay(date);
+    result.setUTCDate(result.getUTCDate() + days);
+    return result;
   }
 
   private async ensureHealthPlanExists(healthPlanId: number) {
@@ -448,7 +498,26 @@ export class InsuranceGuidesService {
     }
   }
 
+  private normalizeGuideNumber(
+    value: string | null | undefined,
+  ): string | null | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+    if (value === null) {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed.length === 0 ? null : trimmed;
+  }
+
   private rethrowKnownPrismaError(error: unknown): void {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      throw new ConflictException('Já existe uma guia com este número.');
+    }
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === 'P2003'

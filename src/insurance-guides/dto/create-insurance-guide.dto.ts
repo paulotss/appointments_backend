@@ -47,7 +47,7 @@ export class CreateInsuranceGuideDto {
 
   @ApiPropertyOptional({
     example: '12345678901234567890',
-    description: 'Numero da guia (opcional)',
+    description: 'Numero da guia (opcional e unico).',
   })
   @IsOptional()
   @IsString()
@@ -56,9 +56,18 @@ export class CreateInsuranceGuideDto {
   guideNumber?: string;
 
   @ApiPropertyOptional({
+    example: '2026-09-01',
+    description:
+      'Data de autorizacao da guia (YYYY-MM-DD). Se omitida, usa a data de hoje',
+  })
+  @IsOptional()
+  @IsDateString()
+  authorizationDate?: string;
+
+  @ApiPropertyOptional({
     example: '2026-09-12',
     description:
-      'Data de validade da guia (YYYY-MM-DD). Se omitida, usa hoje + submissionDeadlineDays do plano',
+      'Data de validade da guia (YYYY-MM-DD). Se omitida, usa a data de autorizacao + submissionDeadlineDays do plano',
   })
   @IsOptional()
   @IsDateString()
