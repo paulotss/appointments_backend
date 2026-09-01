@@ -61,6 +61,14 @@ export class UpdateInsuranceGuideDto {
   guideNumber?: string | null;
 
   @ApiPropertyOptional({
+    example: '2026-09-01',
+    description: 'Data de autorizacao da guia (YYYY-MM-DD)',
+  })
+  @IsOptional()
+  @IsDateString()
+  authorizationDate?: string;
+
+  @ApiPropertyOptional({
     example: '2026-09-12',
     description: 'Data de validade da guia (YYYY-MM-DD)',
   })

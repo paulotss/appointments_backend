@@ -245,6 +245,7 @@ model InsuranceGuide {
   patientId            Int                        @map("patient_id")
   healthProfessionalId Int                        @map("health_professional_id")
   guideNumber          String?                    @map("guide_number") @db.VarChar(50)
+  authorizationDate    DateTime                   @map("authorization_date") @db.Date
   expirationDate       DateTime                   @map("expiration_date") @db.Date
   isBilled             Boolean                    @default(false) @map("is_billed")
   status               InsuranceGuideStatus       @default(pending)

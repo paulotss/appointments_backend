@@ -44,16 +44,24 @@ export class InsuranceGuidesService {
       procedures: createInsuranceGuideDto.procedures,
     });
 
+    const authorizationDate =
+      createInsuranceGuideDto.authorizationDate !== undefined
+        ? new Date(createInsuranceGuideDto.authorizationDate)
+        : this.startOfUtcDay();
     const expirationDate =
       createInsuranceGuideDto.expirationDate !== undefined
         ? new Date(createInsuranceGuideDto.expirationDate)
-        : this.defaultExpirationDate(healthPlan.submissionDeadlineDays);
+        : this.addUtcDays(
+            authorizationDate,
+            healthPlan.submissionDeadlineDays,
+          );
 
     return this.prisma.insuranceGuide.create({
       data: {
         healthPlanId: createInsuranceGuideDto.healthPlanId,
         patientId: createInsuranceGuideDto.patientId,
         healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
+        authorizationDate,
         expirationDate,
         ...(createInsuranceGuideDto.guideNumber !== undefined && {
           guideNumber: createInsuranceGuideDto.guideNumber,
@@ -208,6 +216,11 @@ export class InsuranceGuidesService {
             ...(updateInsuranceGuideDto.healthProfessionalId !== undefined && {
               healthProfessionalId:
                 updateInsuranceGuideDto.healthProfessionalId,
+            }),
+            ...(updateInsuranceGuideDto.authorizationDate !== undefined && {
+              authorizationDate: new Date(
+                updateInsuranceGuideDto.authorizationDate,
+              ),
             }),
             ...(updateInsuranceGuideDto.expirationDate !== undefined && {
               expirationDate: new Date(updateInsuranceGuideDto.expirationDate),
@@ -407,11 +420,16 @@ export class InsuranceGuidesService {
     return new Map(priced.map((item) => [item.procedureId, item.value]));
   }
 
-  private defaultExpirationDate(submissionDeadlineDays: number): Date {
-    const date = new Date();
-    date.setUTCHours(0, 0, 0, 0);
-    date.setUTCDate(date.getUTCDate() + submissionDeadlineDays);
-    return date;
+  private startOfUtcDay(date = new Date()): Date {
+    const result = new Date(date);
+    result.setUTCHours(0, 0, 0, 0);
+    return result;
+  }
+
+  private addUtcDays(date: Date, days: number): Date {
+    const result = this.startOfUtcDay(date);
+    result.setUTCDate(result.getUTCDate() + days);
+    return result;
   }
 
   private async ensureHealthPlanExists(healthPlanId: number) {
