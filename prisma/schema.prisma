@@ -128,6 +128,22 @@ enum BillingBatchStatus {
   @@map("billing_batch_status_enum")
 }
 
+enum TissGuideType {
+  consulta
+  sp_sadt
+
+  @@map("tiss_guide_type_enum")
+}
+
+model ClinicProfile {
+  id        Int     @id
+  legalName String? @map("legal_name") @db.VarChar(255)
+  cnpj      String? @db.VarChar(14)
+  cnes      String? @db.VarChar(7)
+
+  @@map("clinic_profiles")
+}
+
 model Specialty {
   id                            Int                           @id @default(autoincrement())
   name                          String                        @db.VarChar(100)
@@ -143,6 +159,8 @@ model HealthProfessional {
   name          String      @db.VarChar(150)
   councilType   CouncilType @map("council_type")
   councilNumber String      @map("council_number") @db.VarChar(30)
+  councilUf     String?     @map("council_uf") @db.VarChar(2)
+  cbosCode      String?     @map("cbos_code") @db.VarChar(6)
   cpf           String      @unique @db.VarChar(11)
   phone         String?     @db.VarChar(20)
   email         String?     @db.VarChar(150)
@@ -172,6 +190,9 @@ model HealthPlan {
   id                     Int                   @id @default(autoincrement())
   name                   String                @db.VarChar(150)
   submissionDeadlineDays Int                   @map("submission_deadline_days")
+  registroAns            String?               @map("registro_ans") @db.VarChar(6)
+  providerCode           String?               @map("provider_code") @db.VarChar(20)
+  tissVersion            String                @default("4.03.00") @map("tiss_version") @db.VarChar(10)
   insuranceCards         InsuranceCard[]
   insuranceGuides        InsuranceGuide[]
   procedurePrices        HealthPlanProcedure[]
@@ -214,6 +235,7 @@ model Procedure {
   specialtyId      Int                           @map("specialty_id")
   name             String                        @db.VarChar(150)
   value            Decimal                       @db.Decimal(10, 2)
+  tissGuideType    TissGuideType                 @default(sp_sadt) @map("tiss_guide_type")
   specialty        Specialty                     @relation(fields: [specialtyId], references: [id], onDelete: Restrict)
   healthPlanPrices      HealthPlanProcedure[]
   guideProcedures       InsuranceGuideProcedure[]
@@ -249,6 +271,7 @@ model InsuranceGuide {
   expirationDate       DateTime                   @map("expiration_date") @db.Date
   isBilled             Boolean                    @default(false) @map("is_billed")
   status               InsuranceGuideStatus       @default(pending)
+  tissGuideType        TissGuideType?             @map("tiss_guide_type")
   healthPlan           HealthPlan                 @relation(fields: [healthPlanId], references: [id], onDelete: Restrict)
   patient              Patient                    @relation(fields: [patientId], references: [id], onDelete: Restrict)
   healthProfessional   HealthProfessional         @relation(fields: [healthProfessionalId], references: [id], onDelete: Restrict)
@@ -261,6 +284,7 @@ model InsuranceGuide {
   @@index([healthProfessionalId])
   @@index([expirationDate])
   @@index([status])
+  @@index([tissGuideType])
   @@map("insurance_guides")
 }
 

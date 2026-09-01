@@ -7,9 +7,11 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { CreateInsuranceCardDto } from './dto/create-insurance-card.dto';
+import { ListInsuranceCardsQueryDto } from './dto/list-insurance-cards-query.dto';
 import { UpdateInsuranceCardDto } from './dto/update-insurance-card.dto';
 import { InsuranceCardsService } from './insurance-cards.service';
 
@@ -26,8 +28,8 @@ export class InsuranceCardsController {
 
   @Get()
   @ApiOperation({ summary: 'Listar carteirinhas' })
-  findAll() {
-    return this.insuranceCardsService.findAll();
+  findAll(@Query() query: ListInsuranceCardsQueryDto) {
+    return this.insuranceCardsService.findAll(query);
   }
 
   @Get(':id')

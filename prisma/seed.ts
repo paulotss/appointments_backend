@@ -5,6 +5,7 @@ import {
   ContactMethod,
   CouncilType,
   PrismaClient,
+  TissGuideType,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { Pool } from 'pg';
@@ -147,6 +148,8 @@ async function main() {
         name: 'DR. CARLOS MENDES',
         councilType: CouncilType.CRM,
         councilNumber: '123456',
+        councilUf: 'SP',
+        cbosCode: '225142',
         cpf: '52998224725',
         phone: '11988887777',
         email: 'carlos.mendes@email.com',
@@ -164,6 +167,8 @@ async function main() {
         name: 'DRA. ANA COSTA',
         councilType: CouncilType.CRM,
         councilNumber: '654321',
+        councilUf: 'SP',
+        cbosCode: '225125',
         cpf: '39053344705',
         phone: '11977776666',
         email: 'ana.costa@email.com',
@@ -181,6 +186,8 @@ async function main() {
         name: 'ENF. PAULA LIMA',
         councilType: CouncilType.COREN,
         councilNumber: '98765',
+        councilUf: 'SP',
+        cbosCode: '223505',
         cpf: '11144477735',
         phone: '11966665555',
         isActive: false,
@@ -494,6 +501,108 @@ async function main() {
           attendantId: attendantUser.id,
         },
       ],
+    });
+
+    await prisma.clinicProfile.upsert({
+      where: { id: 1 },
+      create: {
+        id: 1,
+        legalName: 'Clinica Exemplo Ltda',
+        cnpj: '12345678000199',
+        cnes: '1234567',
+      },
+      update: {
+        legalName: 'Clinica Exemplo Ltda',
+        cnpj: '12345678000199',
+        cnes: '1234567',
+      },
+    });
+
+    const seedPlan =
+      (await prisma.healthPlan.findFirst({ where: { name: 'UNIMED SEED' } })) ??
+      (await prisma.healthPlan.create({
+        data: {
+          name: 'UNIMED SEED',
+          submissionDeadlineDays: 30,
+          registroAns: '351033',
+          providerCode: '99999',
+          tissVersion: '4.03.00',
+        },
+      }));
+
+    await prisma.healthPlan.update({
+      where: { id: seedPlan.id },
+      data: {
+        registroAns: '351033',
+        providerCode: '99999',
+        tissVersion: '4.03.00',
+      },
+    });
+
+    const consultaProcedure =
+      (await prisma.procedure.findFirst({
+        where: { name: 'CONSULTA CLINICA SEED' },
+      })) ??
+      (await prisma.procedure.create({
+        data: {
+          specialtyId: generalClinic.id,
+          name: 'CONSULTA CLINICA SEED',
+          value: 150,
+          tissGuideType: TissGuideType.consulta,
+        },
+      }));
+
+    const sadtProcedure =
+      (await prisma.procedure.findFirst({
+        where: { name: 'ECG SEED' },
+      })) ??
+      (await prisma.procedure.create({
+        data: {
+          specialtyId: cardiology.id,
+          name: 'ECG SEED',
+          value: 80,
+          tissGuideType: TissGuideType.sp_sadt,
+        },
+      }));
+
+    await prisma.procedure.update({
+      where: { id: consultaProcedure.id },
+      data: { tissGuideType: TissGuideType.consulta },
+    });
+    await prisma.procedure.update({
+      where: { id: sadtProcedure.id },
+      data: { tissGuideType: TissGuideType.sp_sadt },
+    });
+
+    await prisma.healthPlanProcedure.upsert({
+      where: {
+        healthPlanId_procedureId: {
+          healthPlanId: seedPlan.id,
+          procedureId: consultaProcedure.id,
+        },
+      },
+      create: {
+        healthPlanId: seedPlan.id,
+        procedureId: consultaProcedure.id,
+        tissCode: '10101012',
+        value: 80,
+      },
+      update: { tissCode: '10101012', value: 80 },
+    });
+    await prisma.healthPlanProcedure.upsert({
+      where: {
+        healthPlanId_procedureId: {
+          healthPlanId: seedPlan.id,
+          procedureId: sadtProcedure.id,
+        },
+      },
+      create: {
+        healthPlanId: seedPlan.id,
+        procedureId: sadtProcedure.id,
+        tissCode: '40304361',
+        value: 40.5,
+      },
+      update: { tissCode: '40304361', value: 40.5 },
     });
 
     console.log('Seed executado com sucesso.');

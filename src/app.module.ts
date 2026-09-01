@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { BillingBatchesModule } from './billing-batches/billing-batches.module';
 import { CallsModule } from './calls/calls.module';
 import { CategoriesModule } from './categories/categories.module';
+import { ClinicProfileModule } from './clinic-profile/clinic-profile.module';
 import { ClinicalAppointmentsModule } from './clinical-appointments/clinical-appointments.module';
 import { FinancialEntriesModule } from './financial-entries/financial-entries.module';
 import { FinancialExitsModule } from './financial-exits/financial-exits.module';
@@ -43,6 +44,7 @@ import { UsersModule } from './users/users.module';
     CallsModule,
     MessagesModule,
     AuthModule,
+    ClinicProfileModule,
     CategoriesModule,
     ProductsModule,
     SectorsModule,

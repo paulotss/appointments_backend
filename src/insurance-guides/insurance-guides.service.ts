@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, TissGuideType } from '@prisma/client';
 import {
   buildListMeta,
   ListEnvelope,
@@ -39,11 +39,12 @@ export class InsuranceGuidesService {
     await this.ensureHealthProfessionalExists(
       createInsuranceGuideDto.healthProfessionalId,
     );
-    const procedureValues = await this.ensureGuideProceduresValid({
-      healthPlanId: createInsuranceGuideDto.healthPlanId,
-      healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
-      procedures: createInsuranceGuideDto.procedures,
-    });
+    const { values: procedureValues, tissGuideType } =
+      await this.ensureGuideProceduresValid({
+        healthPlanId: createInsuranceGuideDto.healthPlanId,
+        healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
+        procedures: createInsuranceGuideDto.procedures,
+      });
 
     const authorizationDate =
       createInsuranceGuideDto.authorizationDate !== undefined
@@ -62,6 +63,7 @@ export class InsuranceGuidesService {
           healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
           authorizationDate,
           expirationDate,
+          tissGuideType,
           ...(createInsuranceGuideDto.guideNumber !== undefined && {
             guideNumber: this.normalizeGuideNumber(
               createInsuranceGuideDto.guideNumber,
@@ -177,12 +179,15 @@ export class InsuranceGuidesService {
       updateInsuranceGuideDto.healthProfessionalId !== undefined;
 
     let procedureValues = new Map<number, Prisma.Decimal>();
+    let tissGuideType = existing.tissGuideType;
     if (shouldRevalidateProcedures) {
-      procedureValues = await this.ensureGuideProceduresValid({
+      const validated = await this.ensureGuideProceduresValid({
         healthPlanId,
         healthProfessionalId,
         procedures,
       });
+      procedureValues = validated.values;
+      tissGuideType = validated.tissGuideType;
     }
 
     try {
@@ -238,6 +243,7 @@ export class InsuranceGuidesService {
             ...(updateInsuranceGuideDto.status !== undefined && {
               status: updateInsuranceGuideDto.status,
             }),
+            ...(shouldRevalidateProcedures && { tissGuideType }),
           },
           include: guideInclude,
         });
@@ -372,7 +378,10 @@ export class InsuranceGuidesService {
     healthPlanId: number;
     healthProfessionalId: number;
     procedures: InsuranceGuideProcedureInputDto[];
-  }): Promise<Map<number, Prisma.Decimal>> {
+  }): Promise<{
+    values: Map<number, Prisma.Decimal>;
+    tissGuideType: TissGuideType;
+  }> {
     const procedureIds = params.procedures.map((item) => item.procedureId);
     const uniqueIds = new Set(procedureIds);
     if (uniqueIds.size !== procedureIds.length) {
@@ -383,13 +392,26 @@ export class InsuranceGuidesService {
 
     const dbProcedures = await this.prisma.procedure.findMany({
       where: { id: { in: procedureIds } },
-      select: { id: true, specialtyId: true },
+      select: { id: true, specialtyId: true, tissGuideType: true },
     });
 
     if (dbProcedures.length !== uniqueIds.size) {
       const found = new Set(dbProcedures.map((item) => item.id));
       const missing = procedureIds.find((id) => !found.has(id));
       throw new NotFoundException(`Procedure ${missing} not found`);
+    }
+
+    const types = new Set(dbProcedures.map((item) => item.tissGuideType));
+    if (types.size !== 1) {
+      throw new BadRequestException(
+        'procedures cannot mix consulta and sp_sadt tissGuideType',
+      );
+    }
+    const tissGuideType = dbProcedures[0]!.tissGuideType;
+    if (tissGuideType === 'consulta' && params.procedures.length !== 1) {
+      throw new BadRequestException(
+        'consulta guides must contain exactly one procedure',
+      );
     }
 
     const professionalSpecialties =
@@ -424,7 +446,10 @@ export class InsuranceGuidesService {
       );
     }
 
-    return new Map(priced.map((item) => [item.procedureId, item.value]));
+    return {
+      values: new Map(priced.map((item) => [item.procedureId, item.value])),
+      tissGuideType,
+    };
   }
 
   private startOfUtcDay(date = new Date()): Date {

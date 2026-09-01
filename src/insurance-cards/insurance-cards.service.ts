@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInsuranceCardDto } from './dto/create-insurance-card.dto';
+import { ListInsuranceCardsQueryDto } from './dto/list-insurance-cards-query.dto';
 import { UpdateInsuranceCardDto } from './dto/update-insurance-card.dto';
 
 function digitsOnly(value: string): string {
@@ -19,6 +20,10 @@ export class InsuranceCardsService {
   async create(createInsuranceCardDto: CreateInsuranceCardDto) {
     await this.ensurePatientExists(createInsuranceCardDto.patientId);
     await this.ensureHealthPlanExists(createInsuranceCardDto.healthPlanId);
+    await this.ensureUniqueCard(
+      createInsuranceCardDto.patientId,
+      createInsuranceCardDto.healthPlanId,
+    );
 
     return this.prisma.insuranceCard.create({
       data: {
@@ -31,8 +36,11 @@ export class InsuranceCardsService {
     });
   }
 
-  findAll() {
+  findAll(query: ListInsuranceCardsQueryDto = {}) {
     return this.prisma.insuranceCard.findMany({
+      where: {
+        ...(query.patientId !== undefined && { patientId: query.patientId }),
+      },
       orderBy: { id: 'asc' },
       include: cardInclude,
     });
@@ -52,7 +60,7 @@ export class InsuranceCardsService {
   }
 
   async update(id: number, updateInsuranceCardDto: UpdateInsuranceCardDto) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
 
     if (updateInsuranceCardDto.patientId !== undefined) {
       await this.ensurePatientExists(updateInsuranceCardDto.patientId);
@@ -61,6 +69,11 @@ export class InsuranceCardsService {
     if (updateInsuranceCardDto.healthPlanId !== undefined) {
       await this.ensureHealthPlanExists(updateInsuranceCardDto.healthPlanId);
     }
+
+    const nextPatientId = updateInsuranceCardDto.patientId ?? existing.patientId;
+    const nextHealthPlanId =
+      updateInsuranceCardDto.healthPlanId ?? existing.healthPlanId;
+    await this.ensureUniqueCard(nextPatientId, nextHealthPlanId, id);
 
     return this.prisma.insuranceCard.update({
       where: { id },
@@ -89,6 +102,25 @@ export class InsuranceCardsService {
       where: { id },
       include: cardInclude,
     });
+  }
+
+  private async ensureUniqueCard(
+    patientId: number,
+    healthPlanId: number,
+    excludeId?: number,
+  ) {
+    const existing = await this.prisma.insuranceCard.findFirst({
+      where: {
+        patientId,
+        healthPlanId,
+        ...(excludeId !== undefined && { id: { not: excludeId } }),
+      },
+    });
+    if (existing) {
+      throw new BadRequestException(
+        'patient already has a card for this health plan',
+      );
+    }
   }
 
   private async ensurePatientExists(patientId: number) {

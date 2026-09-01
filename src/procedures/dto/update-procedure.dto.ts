@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsEnum,
   IsInt,
   IsNumber,
   IsOptional,
@@ -11,6 +12,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { TissGuideType } from '@prisma/client';
 import { HealthPlanPriceInputDto } from './health-plan-price-input.dto';
 
 export class UpdateProcedureDto {
@@ -37,6 +39,14 @@ export class UpdateProcedureDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   value?: number;
+
+  @ApiPropertyOptional({
+    enum: TissGuideType,
+    example: TissGuideType.sp_sadt,
+  })
+  @IsOptional()
+  @IsEnum(TissGuideType)
+  tissGuideType?: TissGuideType;
 
   @ApiPropertyOptional({
     type: [HealthPlanPriceInputDto],

@@ -1,5 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CouncilType } from '@prisma/client';
+import {
+  IsIn,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
+import { BRAZILIAN_UFS } from '../../common/brazilian-uf';
 import { HealthProfessionalSpecialtyInputDto } from './health-professional-specialty-input.dto';
 
 export class CreateHealthProfessionalDto {
@@ -16,7 +24,19 @@ export class CreateHealthProfessionalDto {
   councilType!: CouncilType;
 
   @ApiProperty({ example: '123456' })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(30)
   councilNumber!: string;
+
+  @ApiProperty({ example: 'SP', enum: BRAZILIAN_UFS })
+  @IsIn(BRAZILIAN_UFS)
+  councilUf!: string;
+
+  @ApiProperty({ example: '225142', description: 'Codigo CBO-S (6 digitos)' })
+  @IsString()
+  @Matches(/^\d{6}$/, { message: 'cbosCode must have 6 digits' })
+  cbosCode!: string;
 
   @ApiProperty({ example: '52998224725', description: 'CPF com 11 digitos' })
   cpf!: string;

@@ -13,6 +13,15 @@ export class HealthPlansService {
       data: {
         name: normalizeName(createHealthPlanDto.name),
         submissionDeadlineDays: createHealthPlanDto.submissionDeadlineDays,
+        ...(createHealthPlanDto.registroAns !== undefined && {
+          registroAns: createHealthPlanDto.registroAns,
+        }),
+        ...(createHealthPlanDto.providerCode !== undefined && {
+          providerCode: createHealthPlanDto.providerCode.trim(),
+        }),
+        ...(createHealthPlanDto.tissVersion !== undefined && {
+          tissVersion: createHealthPlanDto.tissVersion,
+        }),
       },
     });
   }
@@ -46,6 +55,23 @@ export class HealthPlansService {
         }),
         ...(updateHealthPlanDto.submissionDeadlineDays !== undefined && {
           submissionDeadlineDays: updateHealthPlanDto.submissionDeadlineDays,
+        }),
+        ...(updateHealthPlanDto.registroAns !== undefined && {
+          registroAns:
+            updateHealthPlanDto.registroAns == null ||
+            updateHealthPlanDto.registroAns === ''
+              ? null
+              : updateHealthPlanDto.registroAns,
+        }),
+        ...(updateHealthPlanDto.providerCode !== undefined && {
+          providerCode:
+            updateHealthPlanDto.providerCode == null ||
+            updateHealthPlanDto.providerCode.trim() === ''
+              ? null
+              : updateHealthPlanDto.providerCode.trim(),
+        }),
+        ...(updateHealthPlanDto.tissVersion !== undefined && {
+          tissVersion: updateHealthPlanDto.tissVersion,
         }),
       },
     });

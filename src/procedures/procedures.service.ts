@@ -33,6 +33,7 @@ export class ProceduresService {
           specialtyId: createProcedureDto.specialtyId,
           name: normalizeName(createProcedureDto.name),
           value: createProcedureDto.value,
+          tissGuideType: createProcedureDto.tissGuideType,
           ...(createProcedureDto.healthPlanPrices !== undefined && {
             healthPlanPrices: {
               create: createProcedureDto.healthPlanPrices.map((item) => ({
@@ -113,6 +114,9 @@ export class ProceduresService {
             }),
             ...(updateProcedureDto.value !== undefined && {
               value: updateProcedureDto.value,
+            }),
+            ...(updateProcedureDto.tissGuideType !== undefined && {
+              tissGuideType: updateProcedureDto.tissGuideType,
             }),
             ...(updateProcedureDto.healthPlanPrices !== undefined && {
               healthPlanPrices: {

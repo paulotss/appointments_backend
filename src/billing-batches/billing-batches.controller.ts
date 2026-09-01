@@ -2,13 +2,16 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   ParseIntPipe,
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { TissExportService } from '../tiss-export/tiss-export.service';
 import { BillingBatchesService } from './billing-batches.service';
 import {
   CreateBillingBatchDto,
@@ -20,7 +23,10 @@ import {
 @ApiTags('billing-batches')
 @Controller('billing-batches')
 export class BillingBatchesController {
-  constructor(private readonly billingBatchesService: BillingBatchesService) {}
+  constructor(
+    private readonly billingBatchesService: BillingBatchesService,
+    private readonly tissExportService: TissExportService,
+  ) {}
 
   @Post()
   @ApiOperation({
@@ -40,6 +46,22 @@ export class BillingBatchesController {
   })
   findAll(@Query() query: ListBillingBatchesQueryDto) {
     return this.billingBatchesService.findAll(query);
+  }
+
+  @Get(':id/tiss-xml')
+  @ApiOperation({
+    summary: 'Exportar XML TISS do lote',
+    description:
+      'Gera o XML no padrao TISS para lotes faturados ou quitados. Se houver consulta e SP-SADT, devolve um ZIP.',
+  })
+  @ApiParam({ name: 'id', example: 1 })
+  @Header('Cache-Control', 'no-store')
+  async exportTissXml(@Param('id', ParseIntPipe) id: number) {
+    const file = await this.tissExportService.exportBatch(id);
+    return new StreamableFile(file.buffer, {
+      type: file.contentType,
+      disposition: `attachment; filename="${file.filename}"`,
+    });
   }
 
   @Get(':id')
