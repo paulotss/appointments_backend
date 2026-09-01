@@ -23,6 +23,7 @@ import {
   moneyToCents,
 } from '../finance/money';
 import { PrismaService } from '../prisma/prisma.service';
+import { buildBatchNumber, pendingBatchNumber } from './billing-batch-number';
 import {
   CreateBillingBatchDto,
   ListBillingBatchesQueryDto,
@@ -57,21 +58,31 @@ export class BillingBatchesService {
       dto.healthPlanId,
     );
 
-    return this.prisma.billingBatch.create({
-      data: {
-        healthPlanId: dto.healthPlanId,
-        protocolNumber: dto.protocolNumber,
-        billedAmount: centsToMoney(
-          snapshots.reduce((sum, item) => sum + item.billedCents, 0),
-        ),
-        guides: {
-          create: snapshots.map((item) => ({
-            insuranceGuideId: item.id,
-            billedAmount: centsToMoney(item.billedCents),
-          })),
+    return this.prisma.$transaction(async (tx) => {
+      const created = await tx.billingBatch.create({
+        data: {
+          healthPlanId: dto.healthPlanId,
+          protocolNumber: dto.protocolNumber,
+          billedAmount: centsToMoney(
+            snapshots.reduce((sum, item) => sum + item.billedCents, 0),
+          ),
+          batchNumber: pendingBatchNumber(),
+          guides: {
+            create: snapshots.map((item) => ({
+              insuranceGuideId: item.id,
+              billedAmount: centsToMoney(item.billedCents),
+            })),
+          },
         },
-      },
-      include: billingBatchInclude,
+      });
+
+      return tx.billingBatch.update({
+        where: { id: created.id },
+        data: {
+          batchNumber: buildBatchNumber(created.id, created.createdAt),
+        },
+        include: billingBatchInclude,
+      });
     });
   }
 
@@ -253,12 +264,19 @@ export class BillingBatchesService {
           billedAmount,
           status: BillingBatchStatus.billed,
           billedAt: new Date(),
+          batchNumber: pendingBatchNumber(),
           guides: {
             create: {
               insuranceGuideId: guide.id,
               billedAmount,
             },
           },
+        },
+      });
+      await tx.billingBatch.update({
+        where: { id: batch.id },
+        data: {
+          batchNumber: buildBatchNumber(batch.id, batch.createdAt),
         },
       });
       await tx.insuranceGuide.update({

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -51,34 +52,38 @@ export class InsuranceGuidesService {
     const expirationDate =
       createInsuranceGuideDto.expirationDate !== undefined
         ? new Date(createInsuranceGuideDto.expirationDate)
-        : this.addUtcDays(
-            authorizationDate,
-            healthPlan.submissionDeadlineDays,
-          );
+        : this.addUtcDays(authorizationDate, healthPlan.submissionDeadlineDays);
 
-    return this.prisma.insuranceGuide.create({
-      data: {
-        healthPlanId: createInsuranceGuideDto.healthPlanId,
-        patientId: createInsuranceGuideDto.patientId,
-        healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
-        authorizationDate,
-        expirationDate,
-        ...(createInsuranceGuideDto.guideNumber !== undefined && {
-          guideNumber: createInsuranceGuideDto.guideNumber,
-        }),
-        ...(createInsuranceGuideDto.status !== undefined && {
-          status: createInsuranceGuideDto.status,
-        }),
-        procedures: {
-          create: createInsuranceGuideDto.procedures.map((item) => ({
-            procedureId: item.procedureId,
-            authorizedQuantity: item.authorizedQuantity,
-            value: item.value ?? procedureValues.get(item.procedureId)!,
-          })),
+    try {
+      return await this.prisma.insuranceGuide.create({
+        data: {
+          healthPlanId: createInsuranceGuideDto.healthPlanId,
+          patientId: createInsuranceGuideDto.patientId,
+          healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
+          authorizationDate,
+          expirationDate,
+          ...(createInsuranceGuideDto.guideNumber !== undefined && {
+            guideNumber: this.normalizeGuideNumber(
+              createInsuranceGuideDto.guideNumber,
+            ),
+          }),
+          ...(createInsuranceGuideDto.status !== undefined && {
+            status: createInsuranceGuideDto.status,
+          }),
+          procedures: {
+            create: createInsuranceGuideDto.procedures.map((item) => ({
+              procedureId: item.procedureId,
+              authorizedQuantity: item.authorizedQuantity,
+              value: item.value ?? procedureValues.get(item.procedureId)!,
+            })),
+          },
         },
-      },
-      include: guideInclude,
-    });
+        include: guideInclude,
+      });
+    } catch (error) {
+      this.rethrowKnownPrismaError(error);
+      throw error;
+    }
   }
 
   async findAll(
@@ -226,7 +231,9 @@ export class InsuranceGuidesService {
               expirationDate: new Date(updateInsuranceGuideDto.expirationDate),
             }),
             ...(updateInsuranceGuideDto.guideNumber !== undefined && {
-              guideNumber: updateInsuranceGuideDto.guideNumber,
+              guideNumber: this.normalizeGuideNumber(
+                updateInsuranceGuideDto.guideNumber,
+              ),
             }),
             ...(updateInsuranceGuideDto.status !== undefined && {
               status: updateInsuranceGuideDto.status,
@@ -466,7 +473,26 @@ export class InsuranceGuidesService {
     }
   }
 
+  private normalizeGuideNumber(
+    value: string | null | undefined,
+  ): string | null | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+    if (value === null) {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed.length === 0 ? null : trimmed;
+  }
+
   private rethrowKnownPrismaError(error: unknown): void {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      throw new ConflictException('Já existe uma guia com este número.');
+    }
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === 'P2003'

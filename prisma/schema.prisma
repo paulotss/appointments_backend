@@ -244,7 +244,7 @@ model InsuranceGuide {
   healthPlanId         Int                        @map("health_plan_id")
   patientId            Int                        @map("patient_id")
   healthProfessionalId Int                        @map("health_professional_id")
-  guideNumber          String?                    @map("guide_number") @db.VarChar(50)
+  guideNumber          String?                    @unique @map("guide_number") @db.VarChar(50)
   authorizationDate    DateTime                   @map("authorization_date") @db.Date
   expirationDate       DateTime                   @map("expiration_date") @db.Date
   isBilled             Boolean                    @default(false) @map("is_billed")
@@ -607,6 +607,7 @@ model FinancialDocument {
 model BillingBatch {
   id             Int                 @id @default(autoincrement())
   healthPlanId   Int                 @map("health_plan_id")
+  batchNumber    String              @unique @map("batch_number") @db.VarChar(40)
   status         BillingBatchStatus  @default(open)
   billedAmount   Decimal             @map("billed_amount") @db.Decimal(10, 2)
   receivedAmount Decimal             @default(0) @map("received_amount") @db.Decimal(10, 2)

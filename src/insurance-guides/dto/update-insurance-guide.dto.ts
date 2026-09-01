@@ -51,7 +51,7 @@ export class UpdateInsuranceGuideDto {
 
   @ApiPropertyOptional({
     example: '12345678901234567890',
-    description: 'Numero da guia. Envie null para limpar.',
+    description: 'Numero da guia (unico). Envie null para limpar.',
     nullable: true,
   })
   @IsOptional()

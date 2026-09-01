@@ -5,11 +5,80 @@ import {
   FinancialEntryStatus,
   FinancialEntryType,
 } from '@prisma/client';
+import { buildBatchNumber } from './billing-batch-number';
 import { BillingBatchesService } from './billing-batches.service';
+
+describe('buildBatchNumber', () => {
+  it('combines id and UTC creation date', () => {
+    expect(buildBatchNumber(15, new Date('2026-09-01T18:30:00.000Z'))).toBe(
+      '15-20260901',
+    );
+  });
+});
+
+describe('BillingBatchesService.create', () => {
+  const tx = {
+    billingBatch: { create: jest.fn(), update: jest.fn() },
+  };
+  const prisma = {
+    healthPlan: { findUnique: jest.fn() },
+    insuranceGuide: { findMany: jest.fn() },
+    $transaction: jest.fn(),
+  };
+  const service = new BillingBatchesService(prisma as never);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.$transaction.mockImplementation(
+      async (callback: (client: typeof tx) => Promise<unknown>) =>
+        callback(tx),
+    );
+  });
+
+  it('creates an open batch and assigns batchNumber from id and createdAt', async () => {
+    prisma.healthPlan.findUnique.mockResolvedValue({ id: 3 });
+    prisma.insuranceGuide.findMany.mockResolvedValue([
+      {
+        id: 7,
+        healthPlanId: 3,
+        isBilled: false,
+        billingBatchGuide: null,
+        procedures: [{ usedQuantity: 2, value: 80.5 }],
+      },
+    ]);
+    const createdAt = new Date('2026-09-01T12:00:00.000Z');
+    tx.billingBatch.create.mockResolvedValue({ id: 15, createdAt });
+    tx.billingBatch.update.mockResolvedValue({
+      id: 15,
+      batchNumber: '15-20260901',
+    });
+
+    const result = await service.create({
+      healthPlanId: 3,
+      insuranceGuideIds: [7],
+    });
+
+    expect(result).toEqual({ id: 15, batchNumber: '15-20260901' });
+    expect(tx.billingBatch.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          healthPlanId: 3,
+          billedAmount: 161,
+          batchNumber: expect.any(String),
+        }),
+      }),
+    );
+    expect(tx.billingBatch.update).toHaveBeenCalledWith({
+      where: { id: 15 },
+      data: { batchNumber: '15-20260901' },
+      include: expect.any(Object),
+    });
+  });
+});
 
 describe('BillingBatchesService.billGuide', () => {
   const tx = {
-    billingBatch: { create: jest.fn() },
+    billingBatch: { create: jest.fn(), update: jest.fn() },
     insuranceGuide: { update: jest.fn() },
     financialEntry: { create: jest.fn() },
   };
@@ -95,18 +164,23 @@ describe('BillingBatchesService.billGuide', () => {
         procedures: [{ usedQuantity: 2, value: 80.5 }],
       },
     ]);
-    tx.billingBatch.create.mockResolvedValue({ id: 11 });
-    prisma.billingBatch.findUnique.mockResolvedValue({ id: 11 });
+    const createdAt = new Date('2026-09-01T12:00:00.000Z');
+    tx.billingBatch.create.mockResolvedValue({ id: 11, createdAt });
+    prisma.billingBatch.findUnique.mockResolvedValue({
+      id: 11,
+      batchNumber: '11-20260901',
+    });
 
     const result = await service.billGuide(7);
 
-    expect(result).toEqual({ id: 11 });
+    expect(result).toEqual({ id: 11, batchNumber: '11-20260901' });
     expect(tx.billingBatch.create).toHaveBeenCalledWith({
       data: {
         healthPlanId: 3,
         billedAmount: 161,
         status: BillingBatchStatus.billed,
         billedAt: expect.any(Date),
+        batchNumber: expect.any(String),
         guides: {
           create: {
             insuranceGuideId: 7,
@@ -114,6 +188,10 @@ describe('BillingBatchesService.billGuide', () => {
           },
         },
       },
+    });
+    expect(tx.billingBatch.update).toHaveBeenCalledWith({
+      where: { id: 11 },
+      data: { batchNumber: '11-20260901' },
     });
     expect(tx.insuranceGuide.update).toHaveBeenCalledWith({
       where: { id: 7 },

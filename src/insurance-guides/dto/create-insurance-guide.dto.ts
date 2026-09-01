@@ -47,7 +47,7 @@ export class CreateInsuranceGuideDto {
 
   @ApiPropertyOptional({
     example: '12345678901234567890',
-    description: 'Numero da guia (opcional)',
+    description: 'Numero da guia (opcional e unico).',
   })
   @IsOptional()
   @IsString()
