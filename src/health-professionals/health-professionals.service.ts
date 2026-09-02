@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -32,25 +33,30 @@ export class HealthProfessionalsService {
   async create(createHealthProfessionalDto: CreateHealthProfessionalDto) {
     await this.ensureSpecialtiesValid(createHealthProfessionalDto.specialties);
 
-    return this.prisma.healthProfessional.create({
-      data: {
-        name: normalizeName(createHealthProfessionalDto.name),
-        councilType: createHealthProfessionalDto.councilType,
-        councilNumber: createHealthProfessionalDto.councilNumber.trim(),
-        councilUf: createHealthProfessionalDto.councilUf,
-        cbosCode: createHealthProfessionalDto.cbosCode,
-        cpf: digitsOnly(createHealthProfessionalDto.cpf),
-        phone: createHealthProfessionalDto.phone,
-        email: createHealthProfessionalDto.email,
-        isActive: createHealthProfessionalDto.isActive,
-        specialties: {
-          create: createHealthProfessionalDto.specialties.map((item) => ({
-            specialtyId: item.specialtyId,
-          })),
+    try {
+      return await this.prisma.healthProfessional.create({
+        data: {
+          name: normalizeName(createHealthProfessionalDto.name),
+          councilType: createHealthProfessionalDto.councilType,
+          councilNumber: createHealthProfessionalDto.councilNumber.trim(),
+          councilUf: createHealthProfessionalDto.councilUf,
+          cbosCode: createHealthProfessionalDto.cbosCode,
+          cpf: digitsOnly(createHealthProfessionalDto.cpf),
+          phone: createHealthProfessionalDto.phone,
+          email: createHealthProfessionalDto.email,
+          isActive: createHealthProfessionalDto.isActive,
+          specialties: {
+            create: createHealthProfessionalDto.specialties.map((item) => ({
+              specialtyId: item.specialtyId,
+            })),
+          },
         },
-      },
-      include: professionalInclude,
-    });
+        include: professionalInclude,
+      });
+    } catch (error) {
+      this.rethrowKnownPrismaError(error);
+      throw error;
+    }
   }
 
   async findAll(query: ListHealthProfessionalsQueryDto): Promise<
@@ -110,61 +116,66 @@ export class HealthProfessionalsService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      if (updateHealthProfessionalDto.specialties !== undefined) {
-        await tx.healthProfessionalSpecialty.deleteMany({
-          where: { healthProfessionalId: id },
-        });
-        await tx.healthProfessionalSpecialty.createMany({
-          data: updateHealthProfessionalDto.specialties.map((item) => ({
-            healthProfessionalId: id,
-            specialtyId: item.specialtyId,
-          })),
-        });
-      }
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        if (updateHealthProfessionalDto.specialties !== undefined) {
+          await tx.healthProfessionalSpecialty.deleteMany({
+            where: { healthProfessionalId: id },
+          });
+          await tx.healthProfessionalSpecialty.createMany({
+            data: updateHealthProfessionalDto.specialties.map((item) => ({
+              healthProfessionalId: id,
+              specialtyId: item.specialtyId,
+            })),
+          });
+        }
 
-      return tx.healthProfessional.update({
-        where: { id },
-        data: {
-          ...(updateHealthProfessionalDto.name !== undefined && {
-            name: normalizeName(updateHealthProfessionalDto.name),
-          }),
-          ...(updateHealthProfessionalDto.councilType !== undefined && {
-            councilType: updateHealthProfessionalDto.councilType,
-          }),
-          ...(updateHealthProfessionalDto.councilNumber !== undefined && {
-            councilNumber: updateHealthProfessionalDto.councilNumber.trim(),
-          }),
-          ...(updateHealthProfessionalDto.councilUf !== undefined && {
-            councilUf:
-              updateHealthProfessionalDto.councilUf == null ||
-              updateHealthProfessionalDto.councilUf === ''
-                ? null
-                : updateHealthProfessionalDto.councilUf,
-          }),
-          ...(updateHealthProfessionalDto.cbosCode !== undefined && {
-            cbosCode:
-              updateHealthProfessionalDto.cbosCode == null ||
-              updateHealthProfessionalDto.cbosCode === ''
-                ? null
-                : updateHealthProfessionalDto.cbosCode,
-          }),
-          ...(updateHealthProfessionalDto.cpf !== undefined && {
-            cpf: digitsOnly(updateHealthProfessionalDto.cpf),
-          }),
-          ...(updateHealthProfessionalDto.phone !== undefined && {
-            phone: updateHealthProfessionalDto.phone,
-          }),
-          ...(updateHealthProfessionalDto.email !== undefined && {
-            email: updateHealthProfessionalDto.email,
-          }),
-          ...(updateHealthProfessionalDto.isActive !== undefined && {
-            isActive: updateHealthProfessionalDto.isActive,
-          }),
-        },
-        include: professionalInclude,
+        return tx.healthProfessional.update({
+          where: { id },
+          data: {
+            ...(updateHealthProfessionalDto.name !== undefined && {
+              name: normalizeName(updateHealthProfessionalDto.name),
+            }),
+            ...(updateHealthProfessionalDto.councilType !== undefined && {
+              councilType: updateHealthProfessionalDto.councilType,
+            }),
+            ...(updateHealthProfessionalDto.councilNumber !== undefined && {
+              councilNumber: updateHealthProfessionalDto.councilNumber.trim(),
+            }),
+            ...(updateHealthProfessionalDto.councilUf !== undefined && {
+              councilUf:
+                updateHealthProfessionalDto.councilUf == null ||
+                updateHealthProfessionalDto.councilUf === ''
+                  ? null
+                  : updateHealthProfessionalDto.councilUf,
+            }),
+            ...(updateHealthProfessionalDto.cbosCode !== undefined && {
+              cbosCode:
+                updateHealthProfessionalDto.cbosCode == null ||
+                updateHealthProfessionalDto.cbosCode === ''
+                  ? null
+                  : updateHealthProfessionalDto.cbosCode,
+            }),
+            ...(updateHealthProfessionalDto.cpf !== undefined && {
+              cpf: digitsOnly(updateHealthProfessionalDto.cpf),
+            }),
+            ...(updateHealthProfessionalDto.phone !== undefined && {
+              phone: updateHealthProfessionalDto.phone,
+            }),
+            ...(updateHealthProfessionalDto.email !== undefined && {
+              email: updateHealthProfessionalDto.email,
+            }),
+            ...(updateHealthProfessionalDto.isActive !== undefined && {
+              isActive: updateHealthProfessionalDto.isActive,
+            }),
+          },
+          include: professionalInclude,
+        });
       });
-    });
+    } catch (error) {
+      this.rethrowKnownPrismaError(error);
+      throw error;
+    }
   }
 
   async remove(id: number) {
@@ -203,6 +214,15 @@ export class HealthProfessionalsService {
       const foundIds = new Set(found.map((item) => item.id));
       const missing = specialtyIds.find((id) => !foundIds.has(id));
       throw new NotFoundException(`Specialty ${missing} not found`);
+    }
+  }
+
+  private rethrowKnownPrismaError(error: unknown): void {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      throw new ConflictException('Já existe um profissional com este CPF.');
     }
   }
 }

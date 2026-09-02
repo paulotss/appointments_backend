@@ -11,8 +11,8 @@ services:
       - '3000:3000'
     volumes:
       - .:/app:Z
-      - /app/node_modules:Z
-      - uploads_dev:/app/uploads
+      - node_modules_dev:/app/node_modules:Z
+      - uploads_dev:/app/uploads:Z
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,3 +37,4 @@ services:
 volumes:
   postgres_dev_data:
   uploads_dev:
+  node_modules_dev:

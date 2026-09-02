@@ -27,24 +27,35 @@ const guideInclude = {
   billingBatchGuide: { select: { billingBatchId: true } },
 } as const;
 
+type GuideDb = Prisma.TransactionClient | PrismaService;
+
 @Injectable()
 export class InsuranceGuidesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createInsuranceGuideDto: CreateInsuranceGuideDto) {
+  async create(
+    createInsuranceGuideDto: CreateInsuranceGuideDto,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const db: GuideDb = tx ?? this.prisma;
     const healthPlan = await this.ensureHealthPlanExists(
       createInsuranceGuideDto.healthPlanId,
+      db,
     );
-    await this.ensurePatientExists(createInsuranceGuideDto.patientId);
+    await this.ensurePatientExists(createInsuranceGuideDto.patientId, db);
     await this.ensureHealthProfessionalExists(
       createInsuranceGuideDto.healthProfessionalId,
+      db,
     );
     const { values: procedureValues, tissGuideType } =
-      await this.ensureGuideProceduresValid({
-        healthPlanId: createInsuranceGuideDto.healthPlanId,
-        healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
-        procedures: createInsuranceGuideDto.procedures,
-      });
+      await this.ensureGuideProceduresValid(
+        {
+          healthPlanId: createInsuranceGuideDto.healthPlanId,
+          healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
+          procedures: createInsuranceGuideDto.procedures,
+        },
+        db,
+      );
 
     const authorizationDate =
       createInsuranceGuideDto.authorizationDate !== undefined
@@ -56,7 +67,7 @@ export class InsuranceGuidesService {
         : this.addUtcDays(authorizationDate, healthPlan.submissionDeadlineDays);
 
     try {
-      return await this.prisma.insuranceGuide.create({
+      return await db.insuranceGuide.create({
         data: {
           healthPlanId: createInsuranceGuideDto.healthPlanId,
           patientId: createInsuranceGuideDto.patientId,
@@ -374,11 +385,14 @@ export class InsuranceGuidesService {
     }
   }
 
-  private async ensureGuideProceduresValid(params: {
-    healthPlanId: number;
-    healthProfessionalId: number;
-    procedures: InsuranceGuideProcedureInputDto[];
-  }): Promise<{
+  private async ensureGuideProceduresValid(
+    params: {
+      healthPlanId: number;
+      healthProfessionalId: number;
+      procedures: InsuranceGuideProcedureInputDto[];
+    },
+    db: GuideDb = this.prisma,
+  ): Promise<{
     values: Map<number, Prisma.Decimal>;
     tissGuideType: TissGuideType;
   }> {
@@ -390,7 +404,7 @@ export class InsuranceGuidesService {
       );
     }
 
-    const dbProcedures = await this.prisma.procedure.findMany({
+    const dbProcedures = await db.procedure.findMany({
       where: { id: { in: procedureIds } },
       select: { id: true, specialtyId: true, tissGuideType: true },
     });
@@ -415,7 +429,7 @@ export class InsuranceGuidesService {
     }
 
     const professionalSpecialties =
-      await this.prisma.healthProfessionalSpecialty.findMany({
+      await db.healthProfessionalSpecialty.findMany({
         where: { healthProfessionalId: params.healthProfessionalId },
         select: { specialtyId: true },
       });
@@ -431,7 +445,7 @@ export class InsuranceGuidesService {
       }
     }
 
-    const priced = await this.prisma.healthPlanProcedure.findMany({
+    const priced = await db.healthPlanProcedure.findMany({
       where: {
         healthPlanId: params.healthPlanId,
         procedureId: { in: procedureIds },
@@ -464,8 +478,11 @@ export class InsuranceGuidesService {
     return result;
   }
 
-  private async ensureHealthPlanExists(healthPlanId: number) {
-    const healthPlan = await this.prisma.healthPlan.findUnique({
+  private async ensureHealthPlanExists(
+    healthPlanId: number,
+    db: GuideDb = this.prisma,
+  ) {
+    const healthPlan = await db.healthPlan.findUnique({
       where: { id: healthPlanId },
     });
 
@@ -476,8 +493,11 @@ export class InsuranceGuidesService {
     return healthPlan;
   }
 
-  private async ensurePatientExists(patientId: number) {
-    const patient = await this.prisma.patient.findUnique({
+  private async ensurePatientExists(
+    patientId: number,
+    db: GuideDb = this.prisma,
+  ) {
+    const patient = await db.patient.findUnique({
       where: { id: patientId },
     });
 
@@ -486,8 +506,11 @@ export class InsuranceGuidesService {
     }
   }
 
-  private async ensureHealthProfessionalExists(healthProfessionalId: number) {
-    const professional = await this.prisma.healthProfessional.findUnique({
+  private async ensureHealthProfessionalExists(
+    healthProfessionalId: number,
+    db: GuideDb = this.prisma,
+  ) {
+    const professional = await db.healthProfessional.findUnique({
       where: { id: healthProfessionalId },
     });
 
