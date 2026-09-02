@@ -9,6 +9,8 @@ services:
     command: sh -c "npm run prisma:generate && npm run prisma:migrate:deploy && npm run start:prod"
     ports:
       - '3001:3000'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     volumes:
       - uploads_prod:/app/uploads
     depends_on:
