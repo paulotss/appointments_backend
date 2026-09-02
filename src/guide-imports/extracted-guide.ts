@@ -275,9 +275,37 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function parseJsonPayload(raw: string): unknown {
   const trimmed = raw.trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)```$/i);
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const payload = fenced ? fenced[1].trim() : trimmed;
-  return JSON.parse(payload) as unknown;
+  try {
+    return JSON.parse(payload) as unknown;
+  } catch {
+    const start = payload.indexOf('{');
+    const end = payload.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      return JSON.parse(payload.slice(start, end + 1)) as unknown;
+    }
+    throw new Error('invalid json');
+  }
+}
+
+export function transcriptFromPayload(input: unknown): string {
+  return nullableText(asRecord(input).transcript) ?? '';
+}
+
+export function parseExtractedGuideResponse(raw: string): {
+  extracted: ExtractedGuide;
+  transcript: string;
+} {
+  try {
+    const parsed = parseJsonPayload(raw);
+    return {
+      extracted: sanitizeExtractedGuide(parsed),
+      transcript: transcriptFromPayload(parsed),
+    };
+  } catch {
+    return { extracted: emptyExtractedGuide(), transcript: '' };
+  }
 }
 
 export function sanitizeExtractedGuide(input: unknown): ExtractedGuide {
@@ -302,7 +330,7 @@ export function sanitizeExtractedGuide(input: unknown): ExtractedGuide {
       const codeDigits = digitsOnly(nullableText(row.tissCode) ?? '');
       return {
         tissCode: codeDigits.length > 0 ? codeDigits : null,
-        description: nullableText(row.description),
+        description: rejectLabelLikeName(nullableText(row.description)),
         requestedQuantity: positiveIntOrNull(row.requestedQuantity),
         authorizedQuantity: positiveIntOrNull(row.authorizedQuantity),
       };

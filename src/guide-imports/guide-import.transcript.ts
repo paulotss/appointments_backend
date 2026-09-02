@@ -184,10 +184,9 @@ export function completeExtractedGuideFromTranscript(
       ]),
     );
 
-  const procedures =
-    extracted.procedures.length > 0
-      ? extracted.procedures
-      : extractProceduresFromTranscript(text);
+  const procedures = extracted.procedures.some((item) => item.tissCode)
+    ? extracted.procedures
+    : extractProceduresFromTranscript(text);
 
   return sanitizeExtractedGuide({
     tissGuideType: extracted.tissGuideType ?? inferGuideType(text),

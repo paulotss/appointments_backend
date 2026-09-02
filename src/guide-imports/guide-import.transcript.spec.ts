@@ -1,5 +1,5 @@
 import { CouncilType, TissGuideType } from '@prisma/client';
-import { emptyExtractedGuide } from './extracted-guide';
+import { emptyExtractedGuide, sanitizeExtractedGuide } from './extracted-guide';
 import { completeExtractedGuideFromTranscript } from './guide-import.transcript';
 
 const CASSI_CONSULTA = `
@@ -70,7 +70,9 @@ GUIA DE CONSULTA
     expect(extracted.professional.councilUf).toBe('DF');
     expect(extracted.professional.cbosCode).toBe('225105');
     expect(extracted.procedures[0]?.tissCode).toBe('10101012');
-    expect(extracted.procedures[0]?.description).toMatch(/CONSULTA EM CONSULT/i);
+    expect(extracted.procedures[0]?.description).toMatch(
+      /CONSULTA EM CONSULT/i,
+    );
     expect(extracted.patient.name).toBe('CLEIDINA SOUZA CAIXETA SANTOS');
     expect(extracted.patient.cardNumber).toBe('03000210480000055');
     expect(extracted.guide.operatorGuideNumber).toBe('794250219');
@@ -86,6 +88,22 @@ GUIA DE CONSULTA
     expect(extracted.healthPlan.name).toBeNull();
     expect(extracted.tissGuideType).toBe(TissGuideType.consulta);
     expect(extracted.patient.name).toBe('ANA');
+  });
+
+  it('recovers TUSS from transcript when the model only copied the word Consulta', () => {
+    const extracted = completeExtractedGuideFromTranscript(
+      sanitizeExtractedGuide({
+        tissGuideType: 'consulta',
+        procedures: [{ description: 'Consulta' }],
+      }),
+      `
+Nome do Beneficiário: MARIA SILVA
+21 Codigo do Procedimento 10101012
+23 Observação / Justificativa CONSULTA EM CONSULTÓRIO
+`,
+    );
+    expect(extracted.patient.name).toBe('MARIA SILVA');
+    expect(extracted.procedures[0]?.tissCode).toBe('10101012');
   });
 
   it('keeps values already extracted by the model', () => {

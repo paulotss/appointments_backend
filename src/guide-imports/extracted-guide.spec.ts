@@ -44,6 +44,7 @@ describe('sanitizeExtractedGuide', () => {
     expect(extracted.professional.councilType).toBe(CouncilType.CRM);
     expect(extracted.professional.councilUf).toBe('DF');
     expect(extracted.procedures[0]?.tissCode).toBe('10101012');
+    expect(extracted.procedures[0]?.description).toBeNull();
     expect(extracted.procedures[0]?.authorizedQuantity).toBe(1);
   });
 
@@ -83,6 +84,21 @@ describe('sanitizeExtractedGuide', () => {
     );
     expect(extracted.tissGuideType).toBe(TissGuideType.consulta);
     expect(extracted.healthPlan.name).toBe('CASSI');
+  });
+
+  it('parses JSON preceded by model commentary', () => {
+    const extracted = parseExtractedGuideJson(
+      'Here is the JSON:\n{"tissGuideType":"consulta","healthPlan":{"name":"CASSI"}}',
+    );
+    expect(extracted.tissGuideType).toBe(TissGuideType.consulta);
+    expect(extracted.healthPlan.name).toBe('CASSI');
+  });
+
+  it('drops form titles copied as procedure descriptions', () => {
+    const extracted = sanitizeExtractedGuide({
+      procedures: [{ description: 'Consulta', tissCode: null }],
+    });
+    expect(extracted.procedures).toEqual([]);
   });
 });
 

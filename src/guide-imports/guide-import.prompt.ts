@@ -28,12 +28,13 @@ const JSON_SHAPE = `{
 }`;
 
 const FIELD_RULES = `Regras (obrigatórias):
+- Copie o valor impresso ou manuscrito ao lado de cada rótulo. null SOMENTE se o campo estiver em branco ou ilegível. Não deixe null um valor que aparece na guia.
 - Extraia pelo significado dos rótulos, não pela posição das caixas. Números TISS (1, 2, 3...) são só dica.
-- Se o dado não estiver visível, use null. Nunca invente nome, telefone, CPF, data, código ou operadora.
+- Nunca invente nome, telefone, CPF, data, código ou operadora.
 - NÃO copie títulos do formulário. "Guia de Consulta", "Guia de SP/SADT", "Padrão TISS", "TISS", "Consulta" e "SP/SADT" NÃO são plano de saúde, paciente, profissional nem procedimento.
-- Plano de saúde = OPERADORA (logo ou nome: Unimed, CASSI, Amil, Bradesco, Geap, SulAmérica, etc.) e/ou registro ANS (exatamente 6 dígitos). Se só houver o título da guia, healthPlan.name = null.
-- Paciente = nome do BENEFICIÁRIO e número da CARTEIRA. Validade só se estiver preenchida. Datas em YYYY-MM-DD (também aceite DD/MM/AAAA).
-- Profissional = NOME DE PESSOA no campo 12 (Nome do Profissional Executante), conselho no 13, número no 14, UF no 15, CBO no 16. Na SP/SADT prefira o EXECUTANTE; se vazio, use o SOLICITANTE e source="solicitante". "Profissional executante" / "Nome do profissional" são rótulos, não nomes. councilType: CRM, CRO, CRP, COREN ou OTHER.
+- healthPlan.name = OPERADORA (logo ou nome: Unimed, CASSI, Amil, Bradesco, Geap, SulAmérica, etc.). healthPlan.registroAns = "Registro ANS" (somente os 6 dígitos). Se só houver o título da guia, name = null.
+- patient.name = "Nome do Beneficiário" (campo 7). patient.cardNumber = "Número da Carteira" (campo 4). Validade da carteira só se estiver preenchida. Datas em YYYY-MM-DD (também aceite DD/MM/AAAA).
+- professional.name = NOME DE PESSOA no campo 12 (Nome do Profissional Executante), conselho no 13, número no 14, UF no 15, CBO no 16. Na SP/SADT prefira o EXECUTANTE; se vazio, use o SOLICITANTE e source="solicitante". "Profissional executante" / "Nome do profissional" são rótulos, não nomes. councilType: CRM, CRO, CRP, COREN ou OTHER.
 - Procedimentos: na guia de consulta o código TUSS está no campo 21 (Código do Procedimento, 8 dígitos, ex. 10101012). A descrição costuma estar no campo 23 (Observação/Justificativa), NÃO ao lado do código. Na SP/SADT, leia as linhas da tabela de procedimentos. Ignore grade de execução vazia. authorizedQuantity = quantidade autorizada; se só houver solicitada, copie para authorizedQuantity.
 - operatorGuideNumber = campo 3 (Número da Guia atribuído pela operadora). providerGuideNumber = campo 2 (Nº Guia no Prestador), se distinto.
 - attendanceDate = campo 18 (Data do Atendimento), formato YYYY-MM-DD.
@@ -48,16 +49,16 @@ Copie nomes, números, códigos, datas e siglas exatamente.
 Em cada campo, escreva o rótulo e o valor (exemplo: Registro ANS: 346659).
 Não resuma. Não invente. Não explique. Só o texto da guia.`;
 
-export const GUIDE_EXTRACTION_PROMPT = `Leia a IMAGEM de uma guia TISS brasileira. Os valores vêm só da imagem, nunca deste enunciado.
+export const GUIDE_EXTRACTION_PROMPT = `Esta é a imagem de uma guia TISS brasileira (formulário de convênio médico). Os valores vêm só da imagem, nunca deste enunciado.
 
-${FIELD_RULES}
+1) Em "transcript", transcreva TODO o texto visível, linha a linha, no formato "Rótulo: valor". Copie nomes, números, códigos, datas e siglas exatamente. Não resuma. Não explique.
+2) Preencha os demais campos com os VALORES preenchidos nessa transcrição.
 
-Responda APENAS um JSON neste formato:
-${JSON_SHAPE}`;
+${FIELD_RULES}`;
 
 export function extractionPromptFromTranscript(transcript: string): string {
   const clipped = transcript.trim().slice(0, 8000);
-  return `O texto abaixo foi lido de uma guia TISS brasileira. Extraia um JSON. Use null se o dado não aparecer no texto. Não invente.
+  return `O texto abaixo foi lido de uma guia TISS brasileira. Extraia um JSON. Copie cada valor que aparecer. Use null somente se o campo não estiver no texto. Não invente.
 
 ${FIELD_RULES}
 
