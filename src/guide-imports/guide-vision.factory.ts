@@ -1,13 +1,25 @@
+import { Logger } from '@nestjs/common';
 import { GeminiGuideVisionProvider } from './gemini-guide-vision.provider';
 import { OllamaGuideVisionProvider } from './ollama-guide-vision.provider';
 import type { GuideVisionProvider } from './guide-vision.provider';
 
-export function createGuideVisionProvider(): GuideVisionProvider {
-  const kind = (process.env.GUIDE_VISION_PROVIDER ?? 'gemini')
+const logger = new Logger('GuideVision');
+
+export function resolveGuideVisionProviderKind(
+  value = process.env.GUIDE_VISION_PROVIDER,
+): 'gemini' | 'ollama' {
+  const kind = (value ?? 'ollama')
     .trim()
-    .toLowerCase();
-  if (kind === 'ollama') {
-    return new OllamaGuideVisionProvider();
+    .toLowerCase()
+    .replace(/^['"]|['"]$/g, '');
+  return kind === 'gemini' ? 'gemini' : 'ollama';
+}
+
+export function createGuideVisionProvider(): GuideVisionProvider {
+  const kind = resolveGuideVisionProviderKind();
+  logger.log(`Using ${kind} vision provider`);
+  if (kind === 'gemini') {
+    return new GeminiGuideVisionProvider();
   }
-  return new GeminiGuideVisionProvider();
+  return new OllamaGuideVisionProvider();
 }
