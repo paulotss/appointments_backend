@@ -12,6 +12,9 @@ export function resolveGuideVisionProviderKind(
     .trim()
     .toLowerCase()
     .replace(/^['"]|['"]$/g, '');
+  if (process.env.RENDER) {
+    return 'gemini';
+  }
   return kind === 'gemini' ? 'gemini' : 'ollama';
 }
 
