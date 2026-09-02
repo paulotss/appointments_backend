@@ -10,6 +10,7 @@ import { ClinicProfileModule } from './clinic-profile/clinic-profile.module';
 import { ClinicalAppointmentsModule } from './clinical-appointments/clinical-appointments.module';
 import { FinancialEntriesModule } from './financial-entries/financial-entries.module';
 import { FinancialExitsModule } from './financial-exits/financial-exits.module';
+import { GuideImportsModule } from './guide-imports/guide-imports.module';
 import { HealthPlansModule } from './health-plans/health-plans.module';
 import { HealthProfessionalsModule } from './health-professionals/health-professionals.module';
 import { InsuranceCardsModule } from './insurance-cards/insurance-cards.module';
@@ -38,6 +39,7 @@ import { UsersModule } from './users/users.module';
     PatientsModule,
     InsuranceCardsModule,
     InsuranceGuidesModule,
+    GuideImportsModule,
     ProceduresModule,
     ClinicalAppointmentsModule,
     AppointmentsModule,

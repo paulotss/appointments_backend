@@ -7,5 +7,6 @@ import { InsuranceGuidesService } from './insurance-guides.service';
   imports: [BillingBatchesModule],
   controllers: [InsuranceGuidesController],
   providers: [InsuranceGuidesService],
+  exports: [InsuranceGuidesService],
 })
 export class InsuranceGuidesModule {}
