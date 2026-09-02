@@ -105,6 +105,11 @@ export class OllamaGuideVisionProvider implements GuideVisionProvider {
         options: { temperature: 0, num_predict: input.numPredict },
         messages: input.messages,
       }),
+    }).catch((error: unknown) => {
+      this.logger.error(
+        `Ollama is unreachable at ${baseUrl} (${error instanceof Error ? error.message : 'unknown'})`,
+      );
+      throw new ServiceUnavailableException('Local vision model is unreachable');
     });
 
     if (!response.ok) {

@@ -95,6 +95,12 @@ export class GeminiGuideVisionProvider implements GuideVisionProvider {
           responseSchema: GEMINI_JSON_SCHEMA,
         },
       }),
+    }).catch((error: unknown) => {
+      throw new ServiceUnavailableException(
+        error instanceof Error
+          ? 'Vision provider failed to extract guide data'
+          : 'Vision provider failed to extract guide data',
+      );
     });
 
     if (!response.ok) {
