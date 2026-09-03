@@ -63,12 +63,42 @@ describe('buildLoteXml', () => {
     expect(xml).toContain('<ans:tipoTransacao>ENVIO_LOTE_GUIAS</ans:tipoTransacao>');
     expect(xml).toContain('<ans:Padrao>4.03.00</ans:Padrao>');
     expect(xml).toContain('<ans:guiaConsulta>');
+    expect(xml).toContain('<ans:UF>35</ans:UF>');
+    expect(xml).toContain(
+      '<ans:dadosAtendimento>' +
+        '<ans:regimeAtendimento>01</ans:regimeAtendimento>' +
+        '<ans:dataAtendimento>2026-08-10</ans:dataAtendimento>' +
+        '<ans:tipoConsulta>1</ans:tipoConsulta>' +
+        '<ans:procedimento>' +
+        '<ans:codigoTabela>22</ans:codigoTabela>' +
+        '<ans:codigoProcedimento>10101012</ans:codigoProcedimento>' +
+        '<ans:valorProcedimento>80.00</ans:valorProcedimento>' +
+        '</ans:procedimento>' +
+        '</ans:dadosAtendimento>',
+    );
+    expect(xml).toContain('</ans:indicacaoAcidente><ans:dadosAtendimento>');
+    expect(xml).not.toContain('</ans:indicacaoAcidente><ans:dataAtendimento>');
     expect(xml).toContain('<ans:codigoProcedimento>10101012</ans:codigoProcedimento>');
-    expect(xml).toContain('<ans:valorProcedimento>80.00</ans:valorProcedimento>');
-    expect(xml).toContain('<ans:regimeAtendimento>01</ans:regimeAtendimento>');
 
     const hash = xml.match(/<ans:hash>([a-f0-9]{32})<\/ans:hash>/)?.[1];
     expect(hash).toBe(hashFromXml(xml));
+  });
+
+  it('emits IBGE UF code for Distrito Federal', () => {
+    const xml = buildLoteXml({
+      ...basePayload,
+      guides: [
+        {
+          ...basePayload.guides[0]!,
+          professional: {
+            ...basePayload.guides[0]!.professional,
+            councilUf: 'DF',
+          },
+        },
+      ],
+    });
+    expect(xml).toContain('<ans:UF>53</ans:UF>');
+    expect(xml).not.toContain('<ans:UF>DF</ans:UF>');
   });
 
   it('emits SP-SADT items with quantities', () => {
