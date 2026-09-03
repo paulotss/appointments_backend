@@ -1,3 +1,4 @@
+import { toTissUfCode } from '../common/brazilian-uf';
 import {
   COUNCIL_TYPE_TO_TISS,
   TISS_ATENDIMENTO_RN,
@@ -42,7 +43,7 @@ function profissionalTags(xml: XmlBuilder, professional: TissProfessionalData): 
       COUNCIL_TYPE_TO_TISS[professional.councilType] ?? '10',
     ),
     xml.leaf('numeroConselhoProfissional', professional.councilNumber),
-    xml.leaf('UF', professional.councilUf),
+    xml.leaf('UF', toTissUfCode(professional.councilUf)),
     xml.leaf('CBOS', professional.cbosCode),
   ];
 }
@@ -83,14 +84,16 @@ function guiaConsulta(xml: XmlBuilder, payload: TissLotePayload, guide: TissGuid
     ]),
     xml.branch('profissionalExecutante', profissionalTags(xml, guide.professional)),
     xml.leaf('indicacaoAcidente', TISS_INDICACAO_ACIDENTE),
-    xml.leaf('dataAtendimento', guide.attendanceDate),
-    xml.leaf('tipoConsulta', TISS_TIPO_CONSULTA),
-    xml.branch('procedimento', [
-      xml.leaf('codigoTabela', TISS_TABLE_PROCEDIMENTOS),
-      xml.leaf('codigoProcedimento', item.tissCode),
-      xml.leaf('valorProcedimento', formatTissDecimal(billed)),
+    xml.branch('dadosAtendimento', [
+      xml.leaf('regimeAtendimento', TISS_REGIME_ATENDIMENTO),
+      xml.leaf('dataAtendimento', guide.attendanceDate),
+      xml.leaf('tipoConsulta', TISS_TIPO_CONSULTA),
+      xml.branch('procedimento', [
+        xml.leaf('codigoTabela', TISS_TABLE_PROCEDIMENTOS),
+        xml.leaf('codigoProcedimento', item.tissCode),
+        xml.leaf('valorProcedimento', formatTissDecimal(billed)),
+      ]),
     ]),
-    xml.leaf('regimeAtendimento', TISS_REGIME_ATENDIMENTO),
   ]);
 }
 
