@@ -383,7 +383,7 @@ export function parseExtractedGuideJson(raw: string): ExtractedGuide {
 
 export function suggestedGuideNumber(extracted: ExtractedGuide): string | null {
   return (
-    extracted.guide.operatorGuideNumber ?? extracted.guide.providerGuideNumber
+    extracted.guide.providerGuideNumber ?? extracted.guide.operatorGuideNumber
   );
 }
 

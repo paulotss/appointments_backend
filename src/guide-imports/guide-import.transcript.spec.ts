@@ -1,5 +1,9 @@
 import { CouncilType, TissGuideType } from '@prisma/client';
-import { emptyExtractedGuide, sanitizeExtractedGuide } from './extracted-guide';
+import {
+  emptyExtractedGuide,
+  sanitizeExtractedGuide,
+  suggestedGuideNumber,
+} from './extracted-guide';
 import { completeExtractedGuideFromTranscript } from './guide-import.transcript';
 
 const CASSI_CONSULTA = `
@@ -77,6 +81,7 @@ GUIA DE CONSULTA
     expect(extracted.patient.cardNumber).toBe('03000210480000055');
     expect(extracted.guide.operatorGuideNumber).toBe('794250219');
     expect(extracted.guide.providerGuideNumber).toBe('322776148');
+    expect(suggestedGuideNumber(extracted)).toBe('322776148');
     expect(extracted.guide.attendanceDate).toBe('2026-08-17');
   });
 
