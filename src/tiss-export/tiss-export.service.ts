@@ -81,12 +81,6 @@ export class TissExportService {
     if (registroAns.length !== 6) {
       errors.push('Plano: informe o registro ANS com 6 dígitos.');
     }
-    const providerCode = batch.healthPlan.providerCode?.trim() || null;
-    if (!providerCode && cnpj.length !== 14) {
-      errors.push(
-        'Plano: informe o código do prestador na operadora ou o CNPJ da clínica.',
-      );
-    }
     const tissVersion = batch.healthPlan.tissVersion;
     if (!isTissVersion(tissVersion)) {
       errors.push('Plano: versão TISS inválida.');
@@ -173,7 +167,7 @@ export class TissExportService {
       clinic: { legalName, cnpj, cnes },
       plan: {
         registroAns,
-        providerCode,
+        providerCode: batch.healthPlan.providerCode?.trim() || null,
         tissVersion,
       },
       guides,

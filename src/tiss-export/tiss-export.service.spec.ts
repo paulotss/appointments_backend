@@ -182,6 +182,10 @@ describe('TissExportService.exportBatch', () => {
     expect(file.filename).toContain('consulta');
     const xml = file.buffer.toString('utf8');
     expect(xml).toContain('<ans:guiaConsulta>');
+    expect(xml).toContain(
+      '<ans:codigoPrestadorNaOperadora>12345678000199</ans:codigoPrestadorNaOperadora>',
+    );
+    expect(xml).not.toContain('<ans:codigoPrestadorNaOperadora>99999</ans:codigoPrestadorNaOperadora>');
     expect(xml).toContain('<ans:codigoProcedimento>10101012</ans:codigoProcedimento>');
     expect(xml).toMatch(/<ans:hash>[a-f0-9]{32}<\/ans:hash>/);
   });
