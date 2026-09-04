@@ -79,9 +79,25 @@ describe('buildLoteXml', () => {
     expect(xml).toContain('</ans:indicacaoAcidente><ans:dadosAtendimento>');
     expect(xml).not.toContain('</ans:indicacaoAcidente><ans:dataAtendimento>');
     expect(xml).toContain('<ans:codigoProcedimento>10101012</ans:codigoProcedimento>');
+    expect(xml).toContain(
+      '<ans:codigoPrestadorNaOperadora>12345678000199</ans:codigoPrestadorNaOperadora>',
+    );
+    expect(xml).not.toContain('<ans:codigoPrestadorNaOperadora>99999</ans:codigoPrestadorNaOperadora>');
+    expect(xml).not.toContain('<ans:CNPJ>');
 
     const hash = xml.match(/<ans:hash>([a-f0-9]{32})<\/ans:hash>/)?.[1];
     expect(hash).toBe(hashFromXml(xml));
+  });
+
+  it('emits clinic CNPJ as codigoPrestadorNaOperadora when the plan has no provider code', () => {
+    const xml = buildLoteXml({
+      ...basePayload,
+      plan: { ...basePayload.plan, providerCode: null },
+    });
+    expect(xml).toContain(
+      '<ans:codigoPrestadorNaOperadora>12345678000199</ans:codigoPrestadorNaOperadora>',
+    );
+    expect(xml).not.toContain('<ans:CNPJ>');
   });
 
   it('emits IBGE UF code for Distrito Federal', () => {
@@ -121,6 +137,9 @@ describe('buildLoteXml', () => {
       ],
     });
     expect(xml).toContain('<ans:guiaSP-SADT>');
+    expect(xml).toContain(
+      '<ans:codigoPrestadorNaOperadora>12345678000199</ans:codigoPrestadorNaOperadora>',
+    );
     expect(xml).toContain('<ans:quantidadeExecutada>2</ans:quantidadeExecutada>');
     expect(xml).toContain('<ans:valorTotal>81.00</ans:valorTotal>');
     expect(xml).toContain('<ans:valorTotalGeral>81.00</ans:valorTotalGeral>');
