@@ -24,15 +24,38 @@ describe('TissExportService.exportBatch', () => {
     );
   });
 
-  it('rejects batches that are not billed or settled', async () => {
+  it('rejects cancelled batches', async () => {
     prisma.billingBatch.findUnique.mockResolvedValue({
       id: 1,
-      status: BillingBatchStatus.open,
+      status: BillingBatchStatus.cancelled,
       healthPlan: {},
       guides: [],
     });
     await expect(service.exportBatch(1)).rejects.toBeInstanceOf(
       BadRequestException,
+    );
+  });
+
+  it('allows open batches to export', async () => {
+    prisma.billingBatch.findUnique.mockResolvedValue({
+      id: 1,
+      status: BillingBatchStatus.open,
+      batchNumber: '1-20260901',
+      healthPlanId: 3,
+      healthPlan: {
+        registroAns: '351033',
+        providerCode: '99999',
+        tissVersion: '4.03.00',
+      },
+      guides: [],
+    });
+    prisma.clinicProfile.findUnique.mockResolvedValue({
+      legalName: 'Clinica Exemplo Ltda',
+      cnpj: '12345678000199',
+      cnes: '1234567',
+    });
+    await expect(service.exportBatch(1)).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
     );
   });
 

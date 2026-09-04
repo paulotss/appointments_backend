@@ -52,7 +52,7 @@ export class BillingBatchesController {
   @ApiOperation({
     summary: 'Exportar XML TISS do lote',
     description:
-      'Gera o XML no padrao TISS para lotes faturados ou quitados. Se houver consulta e SP-SADT, devolve um ZIP.',
+      'Gera o XML no padrao TISS para lotes abertos, faturados ou quitados. Se houver consulta e SP-SADT, devolve um ZIP.',
   })
   @ApiParam({ name: 'id', example: 1 })
   @Header('Cache-Control', 'no-store')
