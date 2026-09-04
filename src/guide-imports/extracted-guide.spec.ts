@@ -1,9 +1,11 @@
 import { CouncilType, TissGuideType } from '@prisma/client';
 import {
+  emptyExtractedGuide,
   isoDateOrNull,
   mapCouncilType,
   parseExtractedGuideJson,
   sanitizeExtractedGuide,
+  suggestedGuideNumber,
 } from './extracted-guide';
 
 describe('sanitizeExtractedGuide', () => {
@@ -99,6 +101,21 @@ describe('sanitizeExtractedGuide', () => {
       procedures: [{ description: 'Consulta', tissCode: null }],
     });
     expect(extracted.procedures).toEqual([]);
+  });
+});
+
+describe('suggestedGuideNumber', () => {
+  it('prefers the provider guide number over the operator number', () => {
+    const extracted = emptyExtractedGuide();
+    extracted.guide.operatorGuideNumber = '794232414';
+    extracted.guide.providerGuideNumber = '322769287';
+    expect(suggestedGuideNumber(extracted)).toBe('322769287');
+  });
+
+  it('falls back to the operator guide number when the provider number is missing', () => {
+    const extracted = emptyExtractedGuide();
+    extracted.guide.operatorGuideNumber = '794232414';
+    expect(suggestedGuideNumber(extracted)).toBe('794232414');
   });
 });
 

@@ -36,7 +36,7 @@ const FIELD_RULES = `Regras (obrigatórias):
 - patient.name = "Nome do Beneficiário" (campo 7). patient.cardNumber = "Número da Carteira" (campo 4). Validade da carteira só se estiver preenchida. Datas em YYYY-MM-DD (também aceite DD/MM/AAAA).
 - professional.name = NOME DE PESSOA no campo 12 (Nome do Profissional Executante), conselho no 13, número no 14, UF no 15, CBO no 16. Na SP/SADT prefira o EXECUTANTE; se vazio, use o SOLICITANTE e source="solicitante". "Profissional executante" / "Nome do profissional" são rótulos, não nomes. councilType: CRM, CRO, CRP, COREN ou OTHER.
 - Procedimentos: na guia de consulta o código TUSS está no campo 21 (Código do Procedimento, 8 dígitos, ex. 10101012). A descrição costuma estar no campo 23 (Observação/Justificativa), NÃO ao lado do código. Na SP/SADT, leia as linhas da tabela de procedimentos. Ignore grade de execução vazia. authorizedQuantity = quantidade autorizada; se só houver solicitada, copie para authorizedQuantity.
-- operatorGuideNumber = campo 3 (Número da Guia atribuído pela operadora). providerGuideNumber = campo 2 (Nº Guia no Prestador), se distinto.
+- providerGuideNumber = campo 2 (Nº Guia no Prestador; na CASSI fica no canto superior direito). operatorGuideNumber = campo 3 (Número da Guia atribuído pela operadora). Extraia os dois sempre que ambos existirem; não omita o campo 2.
 - attendanceDate = campo 18 (Data do Atendimento), formato YYYY-MM-DD.
 - authorizationDate = data de autorização se estiver preenchida; se não houver, use a data do atendimento.
 - passwordExpirationDate = validade da senha/autorização. NÃO use a validade da carteira e não invente data.
