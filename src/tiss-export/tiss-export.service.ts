@@ -59,12 +59,9 @@ export class TissExportService {
     if (!batch) {
       throw new NotFoundException(`Billing batch ${id} not found`);
     }
-    if (
-      batch.status !== BillingBatchStatus.billed &&
-      batch.status !== BillingBatchStatus.settled
-    ) {
+    if (batch.status === BillingBatchStatus.cancelled) {
       throw new BadRequestException(
-        'Only billed or settled billing batches can export TISS XML',
+        'Cancelled billing batches cannot export TISS XML',
       );
     }
 
