@@ -46,17 +46,17 @@ Data do atendimento: 17/08/2026
 
 describe('parseOpenRouterModelList', () => {
   it('keeps a single paid slug', () => {
-    expect(parseOpenRouterModelList('inclusionai/ling-3.0-flash')).toEqual([
-      'inclusionai/ling-3.0-flash',
+    expect(parseOpenRouterModelList('google/gemini-2.5-flash-lite')).toEqual([
+      'google/gemini-2.5-flash-lite',
     ]);
   });
 
   it('parses a comma-separated list and drops duplicates', () => {
     expect(
       parseOpenRouterModelList(
-        ' inclusionai/ling-3.0-flash , thinkingmachines/inkling-small, inclusionai/ling-3.0-flash ',
+        ' google/gemini-2.5-flash-lite , qwen/qwen3-vl-8b-instruct, google/gemini-2.5-flash-lite ',
       ),
-    ).toEqual(['inclusionai/ling-3.0-flash', 'thinkingmachines/inkling-small']);
+    ).toEqual(['google/gemini-2.5-flash-lite', 'qwen/qwen3-vl-8b-instruct']);
   });
 });
 
@@ -79,6 +79,15 @@ describe('shouldTryNextOpenRouterModel', () => {
         JSON.stringify({
           error: { message: 'temporarily rate-limited upstream' },
         }),
+      ),
+    ).toBe(true);
+  });
+
+  it('retries the next model when the upstream returns 502', () => {
+    expect(
+      shouldTryNextOpenRouterModel(
+        502,
+        JSON.stringify({ error: { message: 'Provider returned error' } }),
       ),
     ).toBe(true);
   });
@@ -108,12 +117,12 @@ describe('openRouterModelCandidates', () => {
   it('uses only the configured models, in order', () => {
     expect(
       openRouterModelCandidates(
-        'inclusionai/ling-3.0-flash,thinkingmachines/inkling-small',
+        'google/gemini-2.5-flash-lite,qwen/qwen3-vl-8b-instruct',
       ),
-    ).toEqual(['inclusionai/ling-3.0-flash', 'thinkingmachines/inkling-small']);
+    ).toEqual(['google/gemini-2.5-flash-lite', 'qwen/qwen3-vl-8b-instruct']);
   });
 
-  it('falls back to Ling then a paid vision model when none is configured', () => {
+  it('falls back to Gemini Flash Lite then Qwen VL when none is configured', () => {
     expect(openRouterModelCandidates('')).toEqual([
       DEFAULT_OPENROUTER_VISION_MODEL,
       ...DEFAULT_OPENROUTER_VISION_FALLBACKS,
@@ -164,7 +173,7 @@ describe('OpenRouterGuideVisionProvider', () => {
 
   it('sends the configured paid model with a data URL image', async () => {
     process.env.OPENROUTER_API_KEY = 'test-key';
-    process.env.OPENROUTER_VISION_MODEL = 'inclusionai/ling-3.0-flash';
+    process.env.OPENROUTER_VISION_MODEL = 'google/gemini-2.5-flash-lite';
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       text: async () =>
@@ -189,7 +198,7 @@ describe('OpenRouterGuideVisionProvider', () => {
     const body = JSON.parse(
       (global.fetch as jest.Mock).mock.calls[0][1].body as string,
     ) as { model: string; messages: Array<{ content: unknown[] }> };
-    expect(body.model).toBe('inclusionai/ling-3.0-flash');
+    expect(body.model).toBe('google/gemini-2.5-flash-lite');
     expect(body.messages[0].content[1]).toEqual({
       type: 'image_url',
       image_url: {
@@ -205,7 +214,7 @@ describe('OpenRouterGuideVisionProvider', () => {
   it('falls back to the next configured paid model after 404', async () => {
     process.env.OPENROUTER_API_KEY = 'test-key';
     process.env.OPENROUTER_VISION_MODEL =
-      'inclusionai/ling-3.0-flash,thinkingmachines/inkling-small';
+      'google/gemini-2.5-flash-lite,qwen/qwen3-vl-8b-instruct';
     global.fetch = jest
       .fn()
       .mockResolvedValueOnce({
@@ -238,8 +247,8 @@ describe('OpenRouterGuideVisionProvider', () => {
       (call) => JSON.parse(call[1].body as string).model,
     );
     expect(models).toEqual([
-      'inclusionai/ling-3.0-flash',
-      'thinkingmachines/inkling-small',
+      'google/gemini-2.5-flash-lite',
+      'qwen/qwen3-vl-8b-instruct',
     ]);
     expect(extracted.healthPlan.name).toBe('CASSI');
   });

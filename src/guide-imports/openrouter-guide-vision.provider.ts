@@ -14,15 +14,12 @@ import type {
 const REQUEST_TIMEOUT_MS = 180_000;
 const DEFAULT_OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
-/** Paid Ling 3.0 Flash — text-only; PDFs go through OpenRouter's file-parser. */
-export const DEFAULT_OPENROUTER_VISION_MODEL = 'inclusionai/ling-3.0-flash';
+/** Paid vision default — Gemini Flash Lite has the best OCR/price for form photos. */
+export const DEFAULT_OPENROUTER_VISION_MODEL = 'google/gemini-2.5-flash-lite';
 
-/**
- * Paid vision fallback used when the env list is empty.
- * Photos of guias need a multimodal model; Ling 3.0 Flash is text-only.
- */
+/** Dedicated VL fallback on a different lab, used when the env list is empty. */
 export const DEFAULT_OPENROUTER_VISION_FALLBACKS = [
-  'thinkingmachines/inkling-small',
+  'qwen/qwen3-vl-8b-instruct',
 ] as const;
 
 type OpenRouterMessageContent =
@@ -78,7 +75,7 @@ export function shouldTryNextOpenRouterModel(
   status: number,
   body: string,
 ): boolean {
-  if (status === 404 || status === 429) {
+  if (status === 404 || status === 429 || status === 502) {
     return true;
   }
   if (status !== 400) {
@@ -118,7 +115,18 @@ export class OpenRouterGuideVisionProvider implements GuideVisionProvider {
     for (const model of candidates) {
       const result = await this.complete(baseUrl, apiKey, model, document);
       if (result.ok) {
-        return this.parseCompletion(model, result.payload);
+        try {
+          return this.parseCompletion(model, result.payload);
+        } catch (error) {
+          lastError =
+            error instanceof Error
+              ? `OpenRouter ${model}: ${error.message}`
+              : `OpenRouter ${model} returned unusable output`;
+          this.logger.warn(
+            `OpenRouter ${model} returned unusable output; trying next candidate`,
+          );
+          continue;
+        }
       }
       lastError = `OpenRouter ${model} HTTP ${result.status}: ${result.body.slice(0, 500)}`;
       if (shouldTryNextOpenRouterModel(result.status, result.body)) {
