@@ -14,15 +14,15 @@ import type {
 const REQUEST_TIMEOUT_MS = 180_000;
 const DEFAULT_OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
-/** Document-oriented VL on AtlasCloud — avoids Google AI Studio's shared free pool. */
-export const DEFAULT_OPENROUTER_VISION_MODEL =
-  'dots-studio/dots-3-note-preview:free';
+/** Paid Ling 3.0 Flash — text-only; PDFs go through OpenRouter's file-parser. */
+export const DEFAULT_OPENROUTER_VISION_MODEL = 'inclusionai/ling-3.0-flash';
 
-/** Other :free vision models on distinct providers, tried after 404/429. */
-export const OPENROUTER_FREE_VISION_FALLBACKS = [
-  'dots-studio/dots-3-note-preview:free',
-  'nex-agi/nex-n2.5-mini:free',
-  'thinkingmachines/inkling-small:free',
+/**
+ * Paid vision fallback used when the env list is empty.
+ * Photos of guias need a multimodal model; Ling 3.0 Flash is text-only.
+ */
+export const DEFAULT_OPENROUTER_VISION_FALLBACKS = [
+  'thinkingmachines/inkling-small',
 ] as const;
 
 type OpenRouterMessageContent =
@@ -36,23 +36,26 @@ type OpenRouterChatResponse = {
   error?: { message?: string };
 };
 
-export function withoutOpenRouterVariant(model: string): string {
-  return model.trim().replace(/:[^:/]+$/, '');
-}
-
-export function withOpenRouterFreeVariant(model: string): string {
-  const base = withoutOpenRouterVariant(
-    model.trim() || DEFAULT_OPENROUTER_VISION_MODEL,
-  );
-  if (!base) {
-    return `${DEFAULT_OPENROUTER_VISION_MODEL}:free`;
-  }
-  return `${base}:free`;
+export function parseOpenRouterModelList(value: string): string[] {
+  return [
+    ...new Set(
+      value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 export function openRouterModelCandidates(model: string): string[] {
-  const configuredFree = withOpenRouterFreeVariant(model);
-  return [...new Set([configuredFree, ...OPENROUTER_FREE_VISION_FALLBACKS])];
+  const configured = parseOpenRouterModelList(model);
+  if (configured.length > 0) {
+    return configured;
+  }
+  return [
+    DEFAULT_OPENROUTER_VISION_MODEL,
+    ...DEFAULT_OPENROUTER_VISION_FALLBACKS,
+  ];
 }
 
 export function collectOpenRouterMessageText(
@@ -73,10 +76,23 @@ export function collectOpenRouterMessageText(
 
 export function shouldTryNextOpenRouterModel(
   status: number,
-  _body: string,
-  model: string,
+  body: string,
 ): boolean {
-  return (status === 404 || status === 429) && model.endsWith(':free');
+  if (status === 404 || status === 429) {
+    return true;
+  }
+  if (status !== 400) {
+    return false;
+  }
+  const lower = body.toLowerCase();
+  return (
+    lower.includes('does not support') ||
+    lower.includes('input modalit') ||
+    lower.includes('image input') ||
+    lower.includes('image_url') ||
+    lower.includes('not a multimodal') ||
+    lower.includes('multimodal')
+  );
 }
 
 @Injectable()
@@ -95,8 +111,7 @@ export class OpenRouterGuideVisionProvider implements GuideVisionProvider {
       process.env.OPENROUTER_BASE_URL?.trim() || DEFAULT_OPENROUTER_BASE_URL
     ).replace(/\/$/, '');
     const candidates = openRouterModelCandidates(
-      process.env.OPENROUTER_VISION_MODEL?.trim() ||
-        DEFAULT_OPENROUTER_VISION_MODEL,
+      process.env.OPENROUTER_VISION_MODEL ?? '',
     );
 
     let lastError = '';
@@ -106,7 +121,7 @@ export class OpenRouterGuideVisionProvider implements GuideVisionProvider {
         return this.parseCompletion(model, result.payload);
       }
       lastError = `OpenRouter ${model} HTTP ${result.status}: ${result.body.slice(0, 500)}`;
-      if (shouldTryNextOpenRouterModel(result.status, result.body, model)) {
+      if (shouldTryNextOpenRouterModel(result.status, result.body)) {
         this.logger.warn(
           `OpenRouter ${model} is unavailable; trying next candidate`,
         );
