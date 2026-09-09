@@ -1,10 +1,12 @@
 import { TissGuideType } from '@prisma/client';
 import {
   collectOpenRouterMessageText,
+  DEFAULT_OPENROUTER_VISION_FALLBACKS,
+  DEFAULT_OPENROUTER_VISION_MODEL,
   openRouterModelCandidates,
   OpenRouterGuideVisionProvider,
+  parseOpenRouterModelList,
   shouldTryNextOpenRouterModel,
-  withOpenRouterFreeVariant,
 } from './openrouter-guide-vision.provider';
 
 const SPARSE_WITH_TRANSCRIPT = {
@@ -42,65 +44,79 @@ Data do atendimento: 17/08/2026
   },
 };
 
-describe('withOpenRouterFreeVariant', () => {
-  it('keeps an existing :free suffix', () => {
-    expect(withOpenRouterFreeVariant('google/gemma-4-31b-it:free')).toBe(
-      'google/gemma-4-31b-it:free',
-    );
+describe('parseOpenRouterModelList', () => {
+  it('keeps a single paid slug', () => {
+    expect(parseOpenRouterModelList('inclusionai/ling-3.0-flash')).toEqual([
+      'inclusionai/ling-3.0-flash',
+    ]);
   });
 
-  it('appends :free and never keeps a paid slug', () => {
-    expect(withOpenRouterFreeVariant('google/gemma-4-31b-it')).toBe(
-      'google/gemma-4-31b-it:free',
-    );
+  it('parses a comma-separated list and drops duplicates', () => {
+    expect(
+      parseOpenRouterModelList(
+        ' inclusionai/ling-3.0-flash , thinkingmachines/inkling-small, inclusionai/ling-3.0-flash ',
+      ),
+    ).toEqual(['inclusionai/ling-3.0-flash', 'thinkingmachines/inkling-small']);
   });
 });
 
 describe('shouldTryNextOpenRouterModel', () => {
-  it('retries only other free models when :free returns 404', () => {
+  it('retries the next model when a paid slug returns 404', () => {
     expect(
       shouldTryNextOpenRouterModel(
         404,
         JSON.stringify({
-          error: { message: 'This model is unavailable for free.' },
+          error: { message: 'No endpoints found for this model.' },
         }),
-        'qwen/qwen2.5-vl-72b-instruct:free',
       ),
     ).toBe(true);
   });
 
-  it('retries the next free model when the upstream pool returns 429', () => {
+  it('retries the next model when the upstream pool returns 429', () => {
     expect(
       shouldTryNextOpenRouterModel(
         429,
         JSON.stringify({
           error: { message: 'temporarily rate-limited upstream' },
         }),
-        'google/gemma-4-31b-it:free',
       ),
     ).toBe(true);
   });
 
-  it('does not fall back to a paid slug', () => {
+  it('retries the next model when a text-only model rejects image input', () => {
     expect(
       shouldTryNextOpenRouterModel(
-        404,
-        'not found',
-        'qwen/qwen2.5-vl-72b-instruct',
+        400,
+        JSON.stringify({
+          error: { message: 'This model does not support image inputs' },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('does not retry unrelated 400 errors', () => {
+    expect(
+      shouldTryNextOpenRouterModel(
+        400,
+        JSON.stringify({ error: { message: 'max_tokens is too large' } }),
       ),
     ).toBe(false);
   });
 });
 
 describe('openRouterModelCandidates', () => {
-  it('uses only :free slugs from distinct providers', () => {
+  it('uses only the configured models, in order', () => {
     expect(
-      openRouterModelCandidates('qwen/qwen2.5-vl-72b-instruct:free'),
-    ).toEqual([
-      'qwen/qwen2.5-vl-72b-instruct:free',
-      'dots-studio/dots-3-note-preview:free',
-      'nex-agi/nex-n2.5-mini:free',
-      'thinkingmachines/inkling-small:free',
+      openRouterModelCandidates(
+        'inclusionai/ling-3.0-flash,thinkingmachines/inkling-small',
+      ),
+    ).toEqual(['inclusionai/ling-3.0-flash', 'thinkingmachines/inkling-small']);
+  });
+
+  it('falls back to Ling then a paid vision model when none is configured', () => {
+    expect(openRouterModelCandidates('')).toEqual([
+      DEFAULT_OPENROUTER_VISION_MODEL,
+      ...DEFAULT_OPENROUTER_VISION_FALLBACKS,
     ]);
   });
 });
@@ -146,10 +162,9 @@ describe('OpenRouterGuideVisionProvider', () => {
     jest.resetAllMocks();
   });
 
-  it('sends the free document vision model with a data URL image', async () => {
+  it('sends the configured paid model with a data URL image', async () => {
     process.env.OPENROUTER_API_KEY = 'test-key';
-    process.env.OPENROUTER_VISION_MODEL =
-      'dots-studio/dots-3-note-preview:free';
+    process.env.OPENROUTER_VISION_MODEL = 'inclusionai/ling-3.0-flash';
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       text: async () =>
@@ -174,7 +189,7 @@ describe('OpenRouterGuideVisionProvider', () => {
     const body = JSON.parse(
       (global.fetch as jest.Mock).mock.calls[0][1].body as string,
     ) as { model: string; messages: Array<{ content: unknown[] }> };
-    expect(body.model).toBe('dots-studio/dots-3-note-preview:free');
+    expect(body.model).toBe('inclusionai/ling-3.0-flash');
     expect(body.messages[0].content[1]).toEqual({
       type: 'image_url',
       image_url: {
@@ -187,9 +202,10 @@ describe('OpenRouterGuideVisionProvider', () => {
     expect(extracted.procedures[0]?.tissCode).toBe('10101012');
   });
 
-  it('falls back to another free vision model, never a paid slug', async () => {
+  it('falls back to the next configured paid model after 404', async () => {
     process.env.OPENROUTER_API_KEY = 'test-key';
-    process.env.OPENROUTER_VISION_MODEL = 'qwen/qwen2.5-vl-72b-instruct:free';
+    process.env.OPENROUTER_VISION_MODEL =
+      'inclusionai/ling-3.0-flash,thinkingmachines/inkling-small';
     global.fetch = jest
       .fn()
       .mockResolvedValueOnce({
@@ -198,7 +214,7 @@ describe('OpenRouterGuideVisionProvider', () => {
         text: async () =>
           JSON.stringify({
             error: {
-              message: 'This model is unavailable for free.',
+              message: 'No endpoints found for this model.',
               code: 404,
             },
           }),
@@ -222,10 +238,9 @@ describe('OpenRouterGuideVisionProvider', () => {
       (call) => JSON.parse(call[1].body as string).model,
     );
     expect(models).toEqual([
-      'qwen/qwen2.5-vl-72b-instruct:free',
-      'dots-studio/dots-3-note-preview:free',
+      'inclusionai/ling-3.0-flash',
+      'thinkingmachines/inkling-small',
     ]);
-    expect(models.every((item: string) => item.endsWith(':free'))).toBe(true);
     expect(extracted.healthPlan.name).toBe('CASSI');
   });
 });
