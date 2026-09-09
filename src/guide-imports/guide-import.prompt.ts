@@ -56,6 +56,13 @@ export const GUIDE_EXTRACTION_PROMPT = `Esta é a imagem de uma guia TISS brasil
 
 ${FIELD_RULES}`;
 
+export const GUIDE_JSON_EXTRACTION_PROMPT = `${GUIDE_EXTRACTION_PROMPT}
+
+Responda APENAS um JSON neste formato:
+{
+  "transcript": string,
+${JSON_SHAPE.trim().slice(1)}`;
+
 export function extractionPromptFromTranscript(transcript: string): string {
   const clipped = transcript.trim().slice(0, 8000);
   return `O texto abaixo foi lido de uma guia TISS brasileira. Extraia um JSON. Copie cada valor que aparecer. Use null somente se o campo não estiver no texto. Não invente.
