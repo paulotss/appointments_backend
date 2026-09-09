@@ -7,6 +7,7 @@ import { GuideImportsService } from './guide-imports.service';
 import { createGuideVisionProvider } from './guide-vision.factory';
 import { GUIDE_VISION_PROVIDER } from './guide-vision.provider';
 import { OllamaGuideVisionProvider } from './ollama-guide-vision.provider';
+import { OpenRouterGuideVisionProvider } from './openrouter-guide-vision.provider';
 
 @Module({
   imports: [InsuranceGuidesModule],
@@ -16,6 +17,7 @@ import { OllamaGuideVisionProvider } from './ollama-guide-vision.provider';
     GuideImportMatcher,
     GeminiGuideVisionProvider,
     OllamaGuideVisionProvider,
+    OpenRouterGuideVisionProvider,
     {
       provide: GUIDE_VISION_PROVIDER,
       useFactory: createGuideVisionProvider,

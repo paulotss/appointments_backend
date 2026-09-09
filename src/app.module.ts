@@ -18,6 +18,7 @@ import { InsuranceGuidesModule } from './insurance-guides/insurance-guides.modul
 import { MessagesModule } from './messages/messages.module';
 import { PatientsModule } from './patients/patients.module';
 import { PayablesModule } from './payables/payables.module';
+import { PortalRagModule } from './portal-rag/portal-rag.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProceduresModule } from './procedures/procedures.module';
 import { ProductsModule } from './products/products.module';
@@ -37,6 +38,7 @@ import { UsersModule } from './users/users.module';
     HealthProfessionalsModule,
     HealthPlansModule,
     PatientsModule,
+    PortalRagModule,
     InsuranceCardsModule,
     InsuranceGuidesModule,
     GuideImportsModule,

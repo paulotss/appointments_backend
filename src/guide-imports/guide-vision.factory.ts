@@ -1,21 +1,27 @@
 import { Logger } from '@nestjs/common';
 import { GeminiGuideVisionProvider } from './gemini-guide-vision.provider';
 import { OllamaGuideVisionProvider } from './ollama-guide-vision.provider';
+import { OpenRouterGuideVisionProvider } from './openrouter-guide-vision.provider';
 import type { GuideVisionProvider } from './guide-vision.provider';
 
 const logger = new Logger('GuideVision');
 
+export type GuideVisionProviderKind = 'openrouter' | 'gemini' | 'ollama';
+
 export function resolveGuideVisionProviderKind(
   value = process.env.GUIDE_VISION_PROVIDER,
-): 'gemini' | 'ollama' {
-  const kind = (value ?? 'ollama')
+): GuideVisionProviderKind {
+  const kind = (value ?? 'openrouter')
     .trim()
     .toLowerCase()
     .replace(/^['"]|['"]$/g, '');
-  if (process.env.RENDER) {
+  if (kind === 'gemini') {
     return 'gemini';
   }
-  return kind === 'gemini' ? 'gemini' : 'ollama';
+  if (kind === 'ollama') {
+    return 'ollama';
+  }
+  return 'openrouter';
 }
 
 export function createGuideVisionProvider(): GuideVisionProvider {
@@ -24,5 +30,8 @@ export function createGuideVisionProvider(): GuideVisionProvider {
   if (kind === 'gemini') {
     return new GeminiGuideVisionProvider();
   }
-  return new OllamaGuideVisionProvider();
+  if (kind === 'ollama') {
+    return new OllamaGuideVisionProvider();
+  }
+  return new OpenRouterGuideVisionProvider();
 }

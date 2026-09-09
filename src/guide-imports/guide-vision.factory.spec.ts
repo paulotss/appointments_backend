@@ -7,19 +7,30 @@ describe('resolveGuideVisionProviderKind', () => {
   afterEach(() => {
     if (originalRender === undefined) delete process.env.RENDER;
     else process.env.RENDER = originalRender;
-    if (originalProvider === undefined) delete process.env.GUIDE_VISION_PROVIDER;
+    if (originalProvider === undefined)
+      delete process.env.GUIDE_VISION_PROVIDER;
     else process.env.GUIDE_VISION_PROVIDER = originalProvider;
   });
 
-  it('uses Gemini on Render even if Ollama is configured', () => {
+  it('uses OpenRouter by default in production and development', () => {
     process.env.RENDER = 'true';
-    process.env.GUIDE_VISION_PROVIDER = 'ollama';
+    delete process.env.GUIDE_VISION_PROVIDER;
+    expect(resolveGuideVisionProviderKind()).toBe('openrouter');
+  });
+
+  it('uses OpenRouter locally by default', () => {
+    delete process.env.RENDER;
+    delete process.env.GUIDE_VISION_PROVIDER;
+    expect(resolveGuideVisionProviderKind()).toBe('openrouter');
+  });
+
+  it('keeps Gemini when explicitly configured', () => {
+    process.env.GUIDE_VISION_PROVIDER = 'gemini';
     expect(resolveGuideVisionProviderKind()).toBe('gemini');
   });
 
-  it('uses Ollama locally by default', () => {
-    delete process.env.RENDER;
-    delete process.env.GUIDE_VISION_PROVIDER;
+  it('keeps Ollama when explicitly configured', () => {
+    process.env.GUIDE_VISION_PROVIDER = 'ollama';
     expect(resolveGuideVisionProviderKind()).toBe('ollama');
   });
 });
