@@ -15,8 +15,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      minio:
-        condition: service_healthy
     restart: unless-stopped
 
   postgres:
@@ -35,26 +33,6 @@ services:
       retries: 10
     restart: unless-stopped
 
-  minio:
-    image: minio/minio:latest
-    container_name: appointments-minio-dev
-    command: server /data --console-address ":9001"
-    env_file:
-      - .env.docker.dev
-    ports:
-      - '9000:9000'
-      - '9001:9001'
-    volumes:
-      - minio_dev_data:/data
-    healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-    restart: unless-stopped
-
 volumes:
   postgres_dev_data:
-  minio_dev_data:
   node_modules_dev:

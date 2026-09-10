@@ -23,10 +23,11 @@ DATABASE_URL="postgresql://appointments_dev:appointments_dev@localhost:5432/appo
 JWT_SECRET="appointments_local_secret_change_me"
 JWT_EXPIRES_IN="1d"
 GPT_MAKER_TOKEN="seu_token_gpt_maker"
-MINIO_ENDPOINT="http://localhost:9000"
-MINIO_BUCKET="appointments"
-MINIO_ACCESS_KEY="appointments"
-MINIO_SECRET_KEY="appointments_minio_dev"
+R2_ENDPOINT="https://<ACCOUNT_ID>.r2.cloudflarestorage.com"
+R2_BUCKET="seraphis"
+R2_ACCESS_KEY="seu_access_key_id"
+R2_SECRET_KEY="seu_secret_access_key"
+R2_REGION="auto"
 ```
 
 ## 2) Preparar banco de dados (sem Docker)
@@ -53,14 +54,11 @@ npm run start:dev
 API: `http://localhost:3000/api`  
 Swagger: `http://localhost:3000/api/docs`
 
-## 4) Rodar com Docker (API + Postgres + MinIO)
+## 4) Rodar com Docker (API + Postgres)
 
-Arquivos de guias e de contas a pagar ficam no MinIO (volume `minio_data`), nao no disco da API.
+Arquivos de guias e de contas a pagar ficam no Cloudflare R2, nao no disco da API.
 
 Documentos antigos em `uploads/` no disco da API nao sao migrados automaticamente.
-
-Console MinIO (dev): `http://localhost:9001`  
-Usuario/senha: `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` em `.env.docker.dev`.
 
 ### Ambiente de desenvolvimento
 
@@ -90,14 +88,10 @@ npm run docker:prod:down
 
 - Dev API: `http://localhost:3000/api`
 - Dev Postgres: `localhost:5432`
-- Dev MinIO S3: `localhost:9000`
-- Dev MinIO console: `http://localhost:9001`
 - Prod API: `http://localhost:3001/api`
 - Prod Postgres: `localhost:5433`
-- Prod MinIO S3: `localhost:9010`
-- Prod MinIO console: `http://localhost:9011`
 
-Variaveis MinIO: `MINIO_ENDPOINT`, `MINIO_BUCKET`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`. No Compose, `MINIO_ENDPOINT=http://minio:9000`. Sem Docker, use `http://localhost:9000` com o MinIO do Compose no ar.
+Variaveis R2: `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_REGION`. O endpoint e o S3 API do Cloudflare (`https://<ACCOUNT_ID>.r2.cloudflarestorage.com`).
 
 ## Scripts uteis
 
