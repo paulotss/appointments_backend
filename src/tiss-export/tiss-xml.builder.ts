@@ -27,8 +27,12 @@ import {
   XmlBuilder,
 } from './tiss-xml';
 
-function prestadorId(xml: XmlBuilder, clinicCnpj: string): string {
-  return xml.leaf('codigoPrestadorNaOperadora', clinicCnpj);
+function codigoReferenciado(payload: TissLotePayload): string {
+  return payload.plan.providerCode?.trim() || payload.clinic.cnpj;
+}
+
+function prestadorId(xml: XmlBuilder, payload: TissLotePayload): string {
+  return xml.leaf('codigoPrestadorNaOperadora', codigoReferenciado(payload));
 }
 
 function profissionalTags(xml: XmlBuilder, professional: TissProfessionalData): string[] {
@@ -54,7 +58,7 @@ function cabecalho(xml: XmlBuilder, payload: TissLotePayload): string {
     ]),
     xml.branch('origem', [
       xml.branch('identificacaoPrestador', [
-        prestadorId(xml, payload.clinic.cnpj),
+        prestadorId(xml, payload),
       ]),
     ]),
     xml.branch('destino', [xml.leaf('registroANS', payload.plan.registroAns)]),
@@ -75,7 +79,7 @@ function guiaConsulta(xml: XmlBuilder, payload: TissLotePayload, guide: TissGuid
       xml.leaf('atendimentoRN', TISS_ATENDIMENTO_RN),
     ]),
     xml.branch('contratadoExecutante', [
-      prestadorId(xml, payload.clinic.cnpj),
+      prestadorId(xml, payload),
       xml.leaf('CNES', payload.clinic.cnes),
     ]),
     xml.branch('profissionalExecutante', profissionalTags(xml, guide.professional)),
@@ -113,7 +117,7 @@ function guiaSpSadt(xml: XmlBuilder, payload: TissLotePayload, guide: TissGuideD
     ]),
     xml.branch('dadosSolicitante', [
       xml.branch('contratadoSolicitante', [
-        prestadorId(xml, payload.clinic.cnpj),
+        prestadorId(xml, payload),
       ]),
       xml.leaf('nomeContratadoSolicitante', payload.clinic.legalName),
       xml.branch('profissionalSolicitante', profissionalTags(xml, guide.professional)),
@@ -124,7 +128,7 @@ function guiaSpSadt(xml: XmlBuilder, payload: TissLotePayload, guide: TissGuideD
     ]),
     xml.branch('dadosExecutante', [
       xml.branch('contratadoExecutante', [
-        prestadorId(xml, payload.clinic.cnpj),
+        prestadorId(xml, payload),
       ]),
       xml.leaf('CNES', payload.clinic.cnes),
     ]),
