@@ -5,7 +5,6 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import {
-  CreateBucketCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
@@ -19,19 +18,17 @@ import { UploadedFile } from './uploaded-file';
 @Injectable()
 export class FileStorageService implements OnModuleInit {
   private readonly logger = new Logger(FileStorageService.name);
-  private readonly bucket = process.env.MINIO_BUCKET ?? 'appointments';
+  private readonly bucket = process.env.R2_BUCKET ?? 'seraphis';
   private readonly client = new S3Client({
-    region: 'us-east-1',
-    endpoint:
-      process.env.MINIO_ENDPOINT ??
-      (process.env.MINIO_USE_SSL === 'true'
-        ? 'https://localhost:9000'
-        : 'http://localhost:9000'),
+    region: process.env.R2_REGION ?? 'auto',
+    endpoint: process.env.R2_ENDPOINT,
     forcePathStyle: true,
     credentials: {
-      accessKeyId: process.env.MINIO_ACCESS_KEY ?? 'minioadmin',
-      secretAccessKey: process.env.MINIO_SECRET_KEY ?? 'minioadmin',
+      accessKeyId: process.env.R2_ACCESS_KEY ?? '',
+      secretAccessKey: process.env.R2_SECRET_KEY ?? '',
     },
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
   });
 
   async onModuleInit() {
@@ -108,9 +105,11 @@ export class FileStorageService implements OnModuleInit {
   private async ensureBucket(): Promise<void> {
     try {
       await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
-    } catch {
-      await this.client.send(new CreateBucketCommand({ Bucket: this.bucket }));
-      this.logger.log(`Created bucket ${this.bucket}`);
+    } catch (error) {
+      this.logger.error(
+        `R2 bucket ${this.bucket} is not reachable. Check R2_ENDPOINT, R2_BUCKET and API token permissions.`,
+      );
+      throw error;
     }
   }
 }
