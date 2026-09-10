@@ -10,7 +10,10 @@ import {
   ListEnvelope,
 } from '../common/pagination/list-envelope';
 import { PrismaService } from '../prisma/prisma.service';
+import { FileStorageService } from '../uploads/file-storage.service';
+import { UploadedFile } from '../uploads/uploaded-file';
 import { CreateInsuranceGuideDto } from './dto/create-insurance-guide.dto';
+import { guideDocumentFileName } from './guide-document-name';
 import { InsuranceGuideProcedureInputDto } from './dto/insurance-guide-procedure-input.dto';
 import { ListInsuranceGuidesQueryDto } from './dto/list-insurance-guides-query.dto';
 import { UpdateInsuranceGuideDto } from './dto/update-insurance-guide.dto';
@@ -25,13 +28,24 @@ const guideInclude = {
     },
   },
   billingBatchGuide: { select: { billingBatchId: true } },
+  documents: { orderBy: { id: 'asc' as const } },
 } as const;
 
 type GuideDb = Prisma.TransactionClient | PrismaService;
 
+const ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+]);
+
 @Injectable()
 export class InsuranceGuidesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly fileStorage: FileStorageService,
+  ) {}
 
   async create(
     createInsuranceGuideDto: CreateInsuranceGuideDto,
@@ -266,7 +280,10 @@ export class InsuranceGuidesService {
   }
 
   async remove(id: number) {
-    await this.findOne(id);
+    const guide = await this.findOne(id);
+    for (const document of guide.documents) {
+      await this.fileStorage.remove(document.storageKey);
+    }
 
     try {
       return await this.prisma.insuranceGuide.delete({
@@ -277,6 +294,67 @@ export class InsuranceGuidesService {
       this.rethrowKnownPrismaError(error);
       throw error;
     }
+  }
+
+  async addDocument(id: number, file: UploadedFile | undefined) {
+    const guide = await this.findOne(id);
+    if (!file) {
+      throw new BadRequestException('file is required');
+    }
+    const mimeType = file.mimetype === 'image/jpg' ? 'image/jpeg' : file.mimetype;
+    if (!ALLOWED_MIME_TYPES.has(file.mimetype) && !ALLOWED_MIME_TYPES.has(mimeType)) {
+      throw new BadRequestException(
+        'Only PDF, JPEG and PNG documents are allowed',
+      );
+    }
+
+    const originalName = guideDocumentFileName({
+      guideNumber: guide.guideNumber,
+      guideId: guide.id,
+      originalName: file.originalname,
+      mimeType,
+      existingNames: guide.documents.map((item) => item.originalName),
+    });
+    const storageKey = await this.fileStorage.saveGuideFile(id, {
+      ...file,
+      originalname: originalName,
+      mimetype: mimeType,
+    });
+    return this.prisma.insuranceGuideDocument.create({
+      data: {
+        insuranceGuideId: id,
+        originalName,
+        storageKey,
+        mimeType,
+        sizeBytes: file.size,
+      },
+    });
+  }
+
+  async openDocument(guideId: number, documentId: number) {
+    await this.findOne(guideId);
+    const document = await this.prisma.insuranceGuideDocument.findFirst({
+      where: { id: documentId, insuranceGuideId: guideId },
+    });
+    if (!document) {
+      throw new NotFoundException(`Document ${documentId} not found`);
+    }
+    return {
+      document,
+      stream: await this.fileStorage.getStream(document.storageKey),
+    };
+  }
+
+  async removeDocument(guideId: number, documentId: number) {
+    const guide = await this.findOne(guideId);
+    const document = guide.documents.find((item) => item.id === documentId);
+    if (!document) {
+      throw new NotFoundException(`Document ${documentId} not found`);
+    }
+    await this.fileStorage.remove(document.storageKey);
+    return this.prisma.insuranceGuideDocument.delete({
+      where: { id: documentId },
+    });
   }
 
   private async syncGuideProcedures(

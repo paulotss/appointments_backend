@@ -3,7 +3,6 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { createReadStream } from 'fs';
 import { PayableStatus, Prisma } from '@prisma/client';
 import {
   buildListMeta,
@@ -235,9 +234,7 @@ export class PayablesService {
     }
     return {
       document,
-      stream: createReadStream(
-        this.fileStorage.absolutePath(document.storageKey),
-      ),
+      stream: await this.fileStorage.getStream(document.storageKey),
     };
   }
 

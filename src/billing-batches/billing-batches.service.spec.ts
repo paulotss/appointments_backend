@@ -25,7 +25,7 @@ describe('BillingBatchesService.create', () => {
     insuranceGuide: { findMany: jest.fn() },
     $transaction: jest.fn(),
   };
-  const service = new BillingBatchesService(prisma as never);
+  const service = new BillingBatchesService(prisma as never, {} as never);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -90,7 +90,7 @@ describe('BillingBatchesService.billGuide', () => {
     billingBatch: { findUnique: jest.fn() },
     $transaction: jest.fn(),
   };
-  const service = new BillingBatchesService(prisma as never);
+  const service = new BillingBatchesService(prisma as never, {} as never);
 
   beforeEach(() => {
     jest.clearAllMocks();
