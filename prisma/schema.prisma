@@ -276,6 +276,7 @@ model InsuranceGuide {
   patient              Patient                    @relation(fields: [patientId], references: [id], onDelete: Restrict)
   healthProfessional   HealthProfessional         @relation(fields: [healthProfessionalId], references: [id], onDelete: Restrict)
   procedures                 InsuranceGuideProcedure[]
+  documents                  InsuranceGuideDocument[]
   clinicalAppointmentGuides  ClinicalAppointmentGuide[]
   billingBatchGuide          BillingBatchGuide?
 
@@ -286,6 +287,20 @@ model InsuranceGuide {
   @@index([status])
   @@index([tissGuideType])
   @@map("insurance_guides")
+}
+
+model InsuranceGuideDocument {
+  id               Int            @id @default(autoincrement())
+  insuranceGuideId Int            @map("insurance_guide_id")
+  originalName     String         @map("original_name") @db.VarChar(255)
+  storageKey       String         @map("storage_key") @db.VarChar(500)
+  mimeType         String         @map("mime_type") @db.VarChar(100)
+  sizeBytes        Int            @map("size_bytes")
+  uploadedAt       DateTime       @default(now()) @map("uploaded_at") @db.Timestamp(3)
+  insuranceGuide   InsuranceGuide @relation(fields: [insuranceGuideId], references: [id], onDelete: Cascade)
+
+  @@index([insuranceGuideId])
+  @@map("insurance_guide_documents")
 }
 
 model InsuranceGuideProcedure {

@@ -23,6 +23,8 @@ import {
   moneyToCents,
 } from '../finance/money';
 import { PrismaService } from '../prisma/prisma.service';
+import { zipStore } from '../tiss-export/tiss-zip';
+import { FileStorageService } from '../uploads/file-storage.service';
 import { buildBatchNumber, pendingBatchNumber } from './billing-batch-number';
 import {
   CreateBillingBatchDto,
@@ -49,7 +51,10 @@ const billingBatchInclude = {
 
 @Injectable()
 export class BillingBatchesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly fileStorage: FileStorageService,
+  ) {}
 
   async create(dto: CreateBillingBatchDto) {
     await this.ensureHealthPlanExists(dto.healthPlanId);
@@ -125,6 +130,41 @@ export class BillingBatchesService {
       throw new NotFoundException(`Billing batch ${id} not found`);
     }
     return batch;
+  }
+
+  async exportGuideDocuments(id: number) {
+    const batch = await this.findOne(id);
+    if (batch.guides.length === 0) {
+      throw new BadRequestException('O lote não possui guias.');
+    }
+
+    const documents = await this.prisma.insuranceGuideDocument.findMany({
+      where: {
+        insuranceGuideId: {
+          in: batch.guides.map((item) => item.insuranceGuideId),
+        },
+      },
+      orderBy: [{ insuranceGuideId: 'asc' }, { id: 'asc' }],
+    });
+    if (documents.length === 0) {
+      throw new BadRequestException('Nenhuma imagem de guia neste lote.');
+    }
+
+    const usedNames = new Set<string>();
+    const files: Array<{ name: string; data: Buffer }> = [];
+    for (const document of documents) {
+      const data = await this.fileStorage.getBuffer(document.storageKey);
+      const name = uniqueZipName(document.originalName, usedNames);
+      usedNames.add(name);
+      files.push({ name, data });
+    }
+
+    const safeBatch = batch.batchNumber.replaceAll(/[^a-zA-Z0-9._-]/g, '_');
+    return {
+      filename: `lote-${safeBatch}-guias.zip`,
+      contentType: 'application/zip',
+      buffer: zipStore(files),
+    };
   }
 
   async update(id: number, dto: UpdateBillingBatchDto) {
@@ -495,4 +535,21 @@ export class BillingBatchesService {
       };
     });
   }
+}
+
+function uniqueZipName(originalName: string, usedNames: Set<string>): string {
+  const safe = originalName.replace(/[/\\]/g, '_').trim() || 'guia';
+  if (!usedNames.has(safe)) {
+    return safe;
+  }
+  const dot = safe.lastIndexOf('.');
+  const base = dot > 0 ? safe.slice(0, dot) : safe;
+  const ext = dot > 0 ? safe.slice(dot) : '';
+  let suffix = 2;
+  let candidate = `${base}_${suffix}${ext}`;
+  while (usedNames.has(candidate)) {
+    suffix += 1;
+    candidate = `${base}_${suffix}${ext}`;
+  }
+  return candidate;
 }

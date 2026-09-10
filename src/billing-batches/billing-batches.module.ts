@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TissExportModule } from '../tiss-export/tiss-export.module';
+import { UploadsModule } from '../uploads/uploads.module';
 import { BillingBatchesController } from './billing-batches.controller';
 import { BillingBatchesService } from './billing-batches.service';
 
 @Module({
-  imports: [TissExportModule],
+  imports: [TissExportModule, UploadsModule],
   controllers: [BillingBatchesController],
   providers: [BillingBatchesService],
   exports: [BillingBatchesService],

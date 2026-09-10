@@ -64,6 +64,22 @@ export class BillingBatchesController {
     });
   }
 
+  @Get(':id/guide-documents')
+  @ApiOperation({
+    summary: 'Baixar imagens das guias do lote',
+    description:
+      'Gera um ZIP com os documentos anexados de todas as guias do lote.',
+  })
+  @ApiParam({ name: 'id', example: 1 })
+  @Header('Cache-Control', 'no-store')
+  async exportGuideDocuments(@Param('id', ParseIntPipe) id: number) {
+    const file = await this.billingBatchesService.exportGuideDocuments(id);
+    return new StreamableFile(file.buffer, {
+      type: file.contentType,
+      disposition: `attachment; filename="${file.filename}"`,
+    });
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Buscar lote por id' })
   @ApiParam({ name: 'id', example: 1 })

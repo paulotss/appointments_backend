@@ -26,7 +26,11 @@ describe('InsuranceGuidesService guideNumber uniqueness', () => {
     },
     $transaction: jest.fn(),
   };
-  const service = new InsuranceGuidesService(prisma as never);
+  const fileStorage = { remove: jest.fn(), saveGuideFile: jest.fn(), getStream: jest.fn() };
+  const service = new InsuranceGuidesService(
+    prisma as never,
+    fileStorage as never,
+  );
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -70,6 +74,7 @@ describe('InsuranceGuidesService guideNumber uniqueness', () => {
       procedures: [
         { procedureId: 9, authorizedQuantity: 1, usedQuantity: 0 },
       ],
+      documents: [],
     });
     prisma.$transaction.mockImplementation(
       async (callback: (client: typeof prisma) => Promise<unknown>) =>
@@ -95,7 +100,11 @@ describe('InsuranceGuidesService tissGuideType homogeneity', () => {
       create: jest.fn(),
     },
   };
-  const service = new InsuranceGuidesService(prisma as never);
+  const fileStorage = { remove: jest.fn(), saveGuideFile: jest.fn(), getStream: jest.fn() };
+  const service = new InsuranceGuidesService(
+    prisma as never,
+    fileStorage as never,
+  );
 
   beforeEach(() => {
     jest.clearAllMocks();

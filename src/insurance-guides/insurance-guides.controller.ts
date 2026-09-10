@@ -8,9 +8,20 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
 import { BillingBatchesService } from '../billing-batches/billing-batches.service';
+import type { UploadedFile as UploadedFilePayload } from '../uploads/uploaded-file';
 import { CreateInsuranceGuideDto } from './dto/create-insurance-guide.dto';
 import { ListInsuranceGuidesQueryDto } from './dto/list-insurance-guides-query.dto';
 import { UpdateInsuranceGuideDto } from './dto/update-insurance-guide.dto';
@@ -60,6 +71,58 @@ export class InsuranceGuidesController {
   @ApiParam({ name: 'id', example: 1 })
   bill(@Param('id', ParseIntPipe) id: number) {
     return this.billingBatchesService.billGuide(id);
+  }
+
+  @Post(':id/documents')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @ApiOperation({ summary: 'Enviar imagem ou PDF da guia' })
+  @ApiParam({ name: 'id', example: 1 })
+  addDocument(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: UploadedFilePayload,
+  ) {
+    return this.insuranceGuidesService.addDocument(id, file);
+  }
+
+  @Get(':id/documents/:documentId/download')
+  @ApiOperation({ summary: 'Baixar documento da guia' })
+  @ApiParam({ name: 'id', example: 1 })
+  @ApiParam({ name: 'documentId', example: 1 })
+  async downloadDocument(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('documentId', ParseIntPipe) documentId: number,
+  ) {
+    const { document, stream } = await this.insuranceGuidesService.openDocument(
+      id,
+      documentId,
+    );
+    return new StreamableFile(stream, {
+      type: document.mimeType,
+      disposition: `attachment; filename="${encodeURIComponent(document.originalName)}"`,
+    });
+  }
+
+  @Delete(':id/documents/:documentId')
+  @ApiOperation({ summary: 'Remover documento da guia' })
+  @ApiParam({ name: 'id', example: 1 })
+  @ApiParam({ name: 'documentId', example: 1 })
+  removeDocument(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('documentId', ParseIntPipe) documentId: number,
+  ) {
+    return this.insuranceGuidesService.removeDocument(id, documentId);
   }
 
   @Patch(':id')
