@@ -2,13 +2,487 @@ import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import {
   CallRecordStatus,
+  ClinicalAppointmentStatus,
+  ClinicalAppointmentType,
   ContactMethod,
   CouncilType,
+  InsuranceGuideStatus,
   PrismaClient,
   TissGuideType,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { Pool } from 'pg';
+
+const SAO_PAULO_TZ = 'America/Sao_Paulo';
+
+type SlotTemplate = {
+  hour: number;
+  minute: number;
+  durationMinutes: number;
+  professional: 'ana' | 'carlos';
+};
+
+const WEEKDAY_CLINICAL_SLOTS: SlotTemplate[] = [
+  { hour: 8, minute: 0, durationMinutes: 30, professional: 'ana' },
+  { hour: 8, minute: 30, durationMinutes: 30, professional: 'ana' },
+  { hour: 9, minute: 10, durationMinutes: 30, professional: 'ana' },
+  { hour: 10, minute: 0, durationMinutes: 30, professional: 'ana' },
+  { hour: 10, minute: 45, durationMinutes: 30, professional: 'ana' },
+  { hour: 11, minute: 30, durationMinutes: 30, professional: 'ana' },
+  { hour: 14, minute: 0, durationMinutes: 30, professional: 'ana' },
+  { hour: 14, minute: 40, durationMinutes: 30, professional: 'ana' },
+  { hour: 15, minute: 30, durationMinutes: 30, professional: 'ana' },
+  { hour: 16, minute: 15, durationMinutes: 30, professional: 'ana' },
+  { hour: 17, minute: 0, durationMinutes: 30, professional: 'ana' },
+  { hour: 8, minute: 0, durationMinutes: 40, professional: 'carlos' },
+  { hour: 8, minute: 50, durationMinutes: 40, professional: 'carlos' },
+  { hour: 10, minute: 0, durationMinutes: 40, professional: 'carlos' },
+  { hour: 11, minute: 10, durationMinutes: 40, professional: 'carlos' },
+  { hour: 14, minute: 0, durationMinutes: 40, professional: 'carlos' },
+  { hour: 15, minute: 0, durationMinutes: 40, professional: 'carlos' },
+  { hour: 16, minute: 20, durationMinutes: 40, professional: 'carlos' },
+];
+
+const SATURDAY_CLINICAL_SLOTS: SlotTemplate[] = [
+  { hour: 8, minute: 0, durationMinutes: 30, professional: 'ana' },
+  { hour: 8, minute: 30, durationMinutes: 30, professional: 'ana' },
+  { hour: 9, minute: 15, durationMinutes: 30, professional: 'ana' },
+  { hour: 10, minute: 0, durationMinutes: 30, professional: 'ana' },
+  { hour: 8, minute: 10, durationMinutes: 40, professional: 'carlos' },
+  { hour: 9, minute: 10, durationMinutes: 40, professional: 'carlos' },
+];
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+function partsInSaoPaulo(date: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: SAO_PAULO_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+
+  let hour = get('hour');
+  if (hour === 24) {
+    hour = 0;
+  }
+
+  return {
+    year: get('year'),
+    month: get('month'),
+    day: get('day'),
+    hour,
+    minute: get('minute'),
+    second: get('second'),
+  };
+}
+
+function weekdayInSaoPaulo(date: Date): number {
+  const weekday = new Intl.DateTimeFormat('en-US', {
+    timeZone: SAO_PAULO_TZ,
+    weekday: 'short',
+  }).format(date);
+  const map: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+  return map[weekday] ?? 0;
+}
+
+function addDaysYmd(
+  year: number,
+  month: number,
+  day: number,
+  days: number,
+): { year: number; month: number; day: number } {
+  const utc = new Date(Date.UTC(year, month - 1, day + days));
+  return {
+    year: utc.getUTCFullYear(),
+    month: utc.getUTCMonth() + 1,
+    day: utc.getUTCDate(),
+  };
+}
+
+function dateOnlyUtc(year: number, month: number, day: number): Date {
+  return new Date(`${year}-${pad2(month)}-${pad2(day)}T00:00:00.000Z`);
+}
+
+/** Converte data/hora de parede em America/Sao_Paulo para Date UTC. */
+function saoPauloWallTimeToDate(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+): Date {
+  const desiredUtcMs = Date.UTC(year, month - 1, day, hour, minute, 0);
+
+  function offsetMs(instant: number): number {
+    const parts = partsInSaoPaulo(new Date(instant));
+    const asUtc = Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour,
+      parts.minute,
+      parts.second,
+    );
+    return asUtc - instant;
+  }
+
+  let utc = desiredUtcMs - offsetMs(desiredUtcMs);
+  utc = desiredUtcMs - offsetMs(utc);
+  return new Date(utc);
+}
+
+function currentWeekMondayToSaturday(now: Date) {
+  const today = partsInSaoPaulo(now);
+  const weekday = weekdayInSaoPaulo(now);
+  const daysFromMonday = weekday === 0 ? 6 : weekday - 1;
+  const monday = addDaysYmd(
+    today.year,
+    today.month,
+    today.day,
+    -daysFromMonday,
+  );
+
+  return Array.from({ length: 6 }, (_, offset) => {
+    const date = addDaysYmd(monday.year, monday.month, monday.day, offset);
+    return { ...date, weekday: offset + 1 };
+  });
+}
+
+function resolveClinicalStatus(
+  scheduledAt: Date,
+  endsAt: Date,
+  now: Date,
+  index: number,
+): ClinicalAppointmentStatus {
+  if (now >= scheduledAt && now < endsAt) {
+    return ClinicalAppointmentStatus.waiting;
+  }
+
+  if (now >= endsAt) {
+    const bucket = index % 10;
+    if (bucket === 0) {
+      return ClinicalAppointmentStatus.absent;
+    }
+    if (bucket === 1) {
+      return ClinicalAppointmentStatus.attended;
+    }
+    return ClinicalAppointmentStatus.finished;
+  }
+
+  return index % 3 === 0
+    ? ClinicalAppointmentStatus.marked
+    : ClinicalAppointmentStatus.confirmed;
+}
+
+async function seedClinicalAppointmentsForCurrentWeek(
+  prisma: PrismaClient,
+  params: {
+    generalPractitionerId: number;
+    cardiologistId: number;
+    healthPlanId: number;
+    consultaProcedureId: number;
+    consultaTissGuideType: TissGuideType;
+    consultaPlanValue: number;
+    ecgProcedureId: number;
+    ecgTissGuideType: TissGuideType;
+    ecgPlanValue: number;
+  },
+) {
+  const now = new Date();
+  const weekDays = currentWeekMondayToSaturday(now);
+
+  const patients = await prisma.patient.createManyAndReturn({
+    data: [
+      {
+        name: 'Fernanda Alves',
+        phone: '11988001001',
+        email: 'fernanda.alves@email.com',
+        birthDate: dateOnlyUtc(1988, 3, 12),
+        cpf: '20000000001',
+      },
+      {
+        name: 'Ricardo Souza',
+        phone: '11988001002',
+        email: 'ricardo.souza@email.com',
+        birthDate: dateOnlyUtc(1979, 7, 4),
+        cpf: '20000000002',
+      },
+      {
+        name: 'Juliana Martins',
+        phone: '11988001003',
+        email: 'juliana.martins@email.com',
+        birthDate: dateOnlyUtc(1992, 11, 21),
+        cpf: '20000000003',
+      },
+      {
+        name: 'Bruno Oliveira',
+        phone: '11988001004',
+        birthDate: dateOnlyUtc(1985, 1, 30),
+        cpf: '20000000004',
+      },
+      {
+        name: 'Camila Rocha',
+        phone: '11988001005',
+        email: 'camila.rocha@email.com',
+        birthDate: dateOnlyUtc(1996, 5, 18),
+        cpf: '20000000005',
+      },
+      {
+        name: 'Pedro Henrique Lima',
+        phone: '11988001006',
+        email: 'pedro.lima@email.com',
+        birthDate: dateOnlyUtc(1983, 9, 9),
+        cpf: '20000000006',
+      },
+      {
+        name: 'Larissa Mendes',
+        phone: '11988001007',
+        birthDate: dateOnlyUtc(1990, 2, 14),
+        cpf: '20000000007',
+      },
+      {
+        name: 'Thiago Barbosa',
+        phone: '11988001008',
+        email: 'thiago.barbosa@email.com',
+        birthDate: dateOnlyUtc(1976, 12, 2),
+        cpf: '20000000008',
+      },
+      {
+        name: 'Beatriz Nunes',
+        phone: '11988001009',
+        email: 'beatriz.nunes@email.com',
+        birthDate: dateOnlyUtc(2001, 8, 27),
+        cpf: '20000000009',
+      },
+      {
+        name: 'Gustavo Ferreira',
+        phone: '11988001010',
+        birthDate: dateOnlyUtc(1981, 4, 6),
+        cpf: '20000000010',
+      },
+      {
+        name: 'Sonia Ribeiro',
+        phone: '11988001011',
+        email: 'sonia.ribeiro@email.com',
+        birthDate: dateOnlyUtc(1968, 6, 15),
+        cpf: '20000000011',
+      },
+      {
+        name: 'Marcelo Dias',
+        phone: '11988001012',
+        birthDate: dateOnlyUtc(1974, 10, 19),
+        cpf: '20000000012',
+      },
+      {
+        name: 'Aline Castro',
+        phone: '11988001013',
+        email: 'aline.castro@email.com',
+        birthDate: dateOnlyUtc(1994, 3, 3),
+        cpf: '20000000013',
+      },
+      {
+        name: 'Rafael Pinto',
+        phone: '11988001014',
+        email: 'rafael.pinto@email.com',
+        birthDate: dateOnlyUtc(1987, 7, 22),
+        cpf: '20000000014',
+      },
+      {
+        name: 'Vanessa Lopes',
+        phone: '11988001015',
+        birthDate: dateOnlyUtc(1998, 1, 8),
+        cpf: '20000000015',
+      },
+      {
+        name: 'Patricia Gomes',
+        phone: '11988001016',
+        email: 'patricia.gomes@email.com',
+        birthDate: dateOnlyUtc(1982, 5, 25),
+        cpf: '20000000016',
+      },
+      {
+        name: 'Eduardo Araujo',
+        phone: '11988001017',
+        birthDate: dateOnlyUtc(1971, 9, 13),
+        cpf: '20000000017',
+      },
+      {
+        name: 'Helena Cardoso',
+        phone: '11988001018',
+        email: 'helena.cardoso@email.com',
+        birthDate: dateOnlyUtc(1995, 12, 29),
+        cpf: '20000000018',
+      },
+      {
+        name: 'Igor Monteiro',
+        phone: '11988001019',
+        birthDate: dateOnlyUtc(1989, 8, 1),
+        cpf: '20000000019',
+      },
+    ],
+  });
+
+  const planPatients = patients.slice(0, 15);
+  const privatePatients = patients.slice(15);
+
+  await prisma.insuranceCard.createMany({
+    data: planPatients.map((patient, index) => ({
+      patientId: patient.id,
+      healthPlanId: params.healthPlanId,
+      cardNumber: `SEED-CARD-${String(index + 1).padStart(4, '0')}`,
+      expirationDate: dateOnlyUtc(2027, 12, 31),
+    })),
+  });
+
+  let slotIndex = 0;
+  let planPatientCursor = 0;
+  let privatePatientCursor = 0;
+  let guideSeq = 1;
+  let healthPlanCount = 0;
+  let privateCount = 0;
+
+  for (const day of weekDays) {
+    const slots =
+      day.weekday === 6 ? SATURDAY_CLINICAL_SLOTS : WEEKDAY_CLINICAL_SLOTS;
+
+    for (const slot of slots) {
+      const index = slotIndex++;
+      const isPrivate = index % 7 === 0;
+      const professionalId =
+        slot.professional === 'ana'
+          ? params.generalPractitionerId
+          : params.cardiologistId;
+      const procedureId =
+        slot.professional === 'ana'
+          ? params.consultaProcedureId
+          : params.ecgProcedureId;
+      const tissGuideType =
+        slot.professional === 'ana'
+          ? params.consultaTissGuideType
+          : params.ecgTissGuideType;
+      const planValue =
+        slot.professional === 'ana'
+          ? params.consultaPlanValue
+          : params.ecgPlanValue;
+      const patient = isPrivate
+        ? privatePatients[privatePatientCursor++ % privatePatients.length]
+        : planPatients[planPatientCursor++ % planPatients.length];
+      const scheduledAt = saoPauloWallTimeToDate(
+        day.year,
+        day.month,
+        day.day,
+        slot.hour,
+        slot.minute,
+      );
+      const endsAt = new Date(
+        scheduledAt.getTime() + slot.durationMinutes * 60 * 1000,
+      );
+      const status = resolveClinicalStatus(scheduledAt, endsAt, now, index);
+      const type = isPrivate
+        ? ClinicalAppointmentType.private
+        : ClinicalAppointmentType.health_plan;
+      const notes =
+        index % 5 === 0
+          ? 'Retorno. Trazer exames recentes'
+          : index % 5 === 1
+            ? 'Paciente prefere periodo da manha'
+            : undefined;
+      const authYmd = addDaysYmd(day.year, day.month, day.day, -5);
+      const expYmd = addDaysYmd(authYmd.year, authYmd.month, authYmd.day, 45);
+
+      if (type === ClinicalAppointmentType.health_plan) {
+        healthPlanCount += 1;
+        await prisma.clinicalAppointment.create({
+          data: {
+            patientId: patient.id,
+            healthProfessionalId: professionalId,
+            scheduledAt,
+            endsAt,
+            status,
+            type,
+            notes,
+            insuranceGuides: {
+              create: {
+                insuranceGuide: {
+                  create: {
+                    healthPlanId: params.healthPlanId,
+                    patientId: patient.id,
+                    healthProfessionalId: professionalId,
+                    guideNumber: `SEED-CA-${String(guideSeq++).padStart(4, '0')}`,
+                    authorizationDate: dateOnlyUtc(
+                      authYmd.year,
+                      authYmd.month,
+                      authYmd.day,
+                    ),
+                    expirationDate: dateOnlyUtc(
+                      expYmd.year,
+                      expYmd.month,
+                      expYmd.day,
+                    ),
+                    status: InsuranceGuideStatus.authorized,
+                    tissGuideType,
+                    procedures: {
+                      create: {
+                        procedureId,
+                        authorizedQuantity: 1,
+                        usedQuantity:
+                          status === ClinicalAppointmentStatus.finished ? 1 : 0,
+                        value: planValue,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            procedures: {
+              create: { procedureId },
+            },
+          },
+        });
+      } else {
+        privateCount += 1;
+        await prisma.clinicalAppointment.create({
+          data: {
+            patientId: patient.id,
+            healthProfessionalId: professionalId,
+            scheduledAt,
+            endsAt,
+            status,
+            type,
+            notes,
+            procedures: {
+              create: { procedureId },
+            },
+          },
+        });
+      }
+    }
+  }
+
+  return {
+    total: healthPlanCount + privateCount,
+    healthPlan: healthPlanCount,
+    private: privateCount,
+  };
+}
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -22,6 +496,18 @@ async function main() {
   const prisma = new PrismaClient({ adapter });
 
   try {
+    await prisma.financialEntryItem.deleteMany();
+    await prisma.financialEntry.deleteMany();
+    await prisma.billingBatchGuide.deleteMany();
+    await prisma.billingBatch.deleteMany();
+    await prisma.clinicalAppointmentProcedure.deleteMany();
+    await prisma.clinicalAppointmentGuide.deleteMany();
+    await prisma.clinicalAppointment.deleteMany();
+    await prisma.insuranceGuideDocument.deleteMany();
+    await prisma.insuranceGuideProcedure.deleteMany();
+    await prisma.insuranceGuide.deleteMany();
+    await prisma.insuranceCard.deleteMany();
+    await prisma.patient.deleteMany();
     await prisma.stockExit.deleteMany();
     await prisma.stockBatch.deleteMany();
     await prisma.supplier.deleteMany();
@@ -33,6 +519,8 @@ async function main() {
     await prisma.message.deleteMany();
     await prisma.call.deleteMany();
     await prisma.healthProfessional.deleteMany();
+    await prisma.healthPlanProcedure.deleteMany();
+    await prisma.procedure.deleteMany();
     await prisma.specialty.deleteMany();
     await prisma.user.deleteMany();
 
@@ -162,7 +650,7 @@ async function main() {
       },
     });
 
-    await prisma.healthProfessional.create({
+    const generalPractitioner = await prisma.healthProfessional.create({
       data: {
         name: 'DRA. ANA COSTA',
         councilType: CouncilType.CRM,
@@ -605,8 +1093,23 @@ async function main() {
       update: { tissCode: '40304361', value: 40.5 },
     });
 
+    const clinicalSeed = await seedClinicalAppointmentsForCurrentWeek(prisma, {
+      generalPractitionerId: generalPractitioner.id,
+      cardiologistId: cardiologist.id,
+      healthPlanId: seedPlan.id,
+      consultaProcedureId: consultaProcedure.id,
+      consultaTissGuideType: TissGuideType.consulta,
+      consultaPlanValue: 80,
+      ecgProcedureId: sadtProcedure.id,
+      ecgTissGuideType: TissGuideType.sp_sadt,
+      ecgPlanValue: 40.5,
+    });
+
     console.log('Seed executado com sucesso.');
     console.log('Usuarios criados: admin / admin123, atendente / user123');
+    console.log(
+      `Agendamentos clinicos da semana atual: ${clinicalSeed.total} (plano_de_saude: ${clinicalSeed.healthPlan}, particular: ${clinicalSeed.private})`,
+    );
   } finally {
     await prisma.$disconnect();
     await pool.end();
