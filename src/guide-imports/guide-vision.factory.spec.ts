@@ -29,8 +29,8 @@ describe('resolveGuideVisionProviderKind', () => {
     expect(resolveGuideVisionProviderKind()).toBe('gemini');
   });
 
-  it('keeps Ollama when explicitly configured', () => {
+  it('falls back to OpenRouter when Ollama is configured', () => {
     process.env.GUIDE_VISION_PROVIDER = 'ollama';
-    expect(resolveGuideVisionProviderKind()).toBe('ollama');
+    expect(resolveGuideVisionProviderKind()).toBe('openrouter');
   });
 });
