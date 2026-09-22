@@ -12,13 +12,14 @@ import { FinancialEntriesModule } from './financial-entries/financial-entries.mo
 import { FinancialExitsModule } from './financial-exits/financial-exits.module';
 import { GuideImportsModule } from './guide-imports/guide-imports.module';
 import { HealthPlansModule } from './health-plans/health-plans.module';
+import { HigiaModule } from './higia/higia.module';
 import { HealthProfessionalsModule } from './health-professionals/health-professionals.module';
 import { InsuranceCardsModule } from './insurance-cards/insurance-cards.module';
 import { InsuranceGuidesModule } from './insurance-guides/insurance-guides.module';
 import { MessagesModule } from './messages/messages.module';
+import { AgentDataModule } from './agent-data/agent-data.module';
 import { PatientsModule } from './patients/patients.module';
 import { PayablesModule } from './payables/payables.module';
-import { PortalRagModule } from './portal-rag/portal-rag.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProceduresModule } from './procedures/procedures.module';
 import { ProductsModule } from './products/products.module';
@@ -38,7 +39,8 @@ import { UsersModule } from './users/users.module';
     HealthProfessionalsModule,
     HealthPlansModule,
     PatientsModule,
-    PortalRagModule,
+    AgentDataModule,
+    HigiaModule,
     InsuranceCardsModule,
     InsuranceGuidesModule,
     GuideImportsModule,

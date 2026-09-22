@@ -54,6 +54,16 @@ function addCalendarDaysYmd(dateYmd: string, days: number): string {
   return `${y}-${m}-${d}`;
 }
 
+/** Calendar date YYYY-MM-DD in America/Sao_Paulo. */
+export function todayYmdSaoPaulo(now = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: SAO_PAULO_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+}
+
 /** Inclusive start of calendar day in America/Sao_Paulo (as UTC Date). */
 export function startOfDaySaoPaulo(dateYmd: string): Date {
   return zonedMidnightToUtc(dateYmd, SAO_PAULO_TZ);
