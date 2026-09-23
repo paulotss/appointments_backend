@@ -30,7 +30,9 @@ export class InsuranceCardsService {
         patientId: createInsuranceCardDto.patientId,
         healthPlanId: createInsuranceCardDto.healthPlanId,
         cardNumber: digitsOnly(createInsuranceCardDto.cardNumber),
-        expirationDate: new Date(createInsuranceCardDto.expirationDate),
+        expirationDate: createInsuranceCardDto.expirationDate
+          ? new Date(createInsuranceCardDto.expirationDate)
+          : null,
       },
       include: cardInclude,
     });
@@ -88,7 +90,9 @@ export class InsuranceCardsService {
           cardNumber: digitsOnly(updateInsuranceCardDto.cardNumber),
         }),
         ...(updateInsuranceCardDto.expirationDate !== undefined && {
-          expirationDate: new Date(updateInsuranceCardDto.expirationDate),
+          expirationDate: updateInsuranceCardDto.expirationDate
+            ? new Date(updateInsuranceCardDto.expirationDate)
+            : null,
         }),
       },
       include: cardInclude,

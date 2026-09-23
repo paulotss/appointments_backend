@@ -203,10 +203,8 @@ export class GuideImportsService {
       cardExpirationDate?: string;
     },
   ) {
-    if (!params.cardNumber || !params.cardExpirationDate) {
-      throw new BadRequestException(
-        'insurance card number and expiration date are required',
-      );
+    if (!params.cardNumber) {
+      throw new BadRequestException('insurance card number is required');
     }
 
     await tx.insuranceCard.create({
@@ -214,7 +212,9 @@ export class GuideImportsService {
         patientId: params.patientId,
         healthPlanId: params.healthPlanId,
         cardNumber: digitsOnly(params.cardNumber),
-        expirationDate: new Date(params.cardExpirationDate),
+        expirationDate: params.cardExpirationDate
+          ? new Date(params.cardExpirationDate)
+          : null,
       },
     });
   }

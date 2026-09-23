@@ -12,7 +12,8 @@ export class UpdateInsuranceCardDto {
 
   @ApiPropertyOptional({
     example: '2027-12-31',
-    description: 'Data de validade da carteirinha (YYYY-MM-DD)',
+    description: 'Data de validade da carteirinha (YYYY-MM-DD). Nulo remove a validade.',
+    nullable: true,
   })
-  expirationDate?: string;
+  expirationDate?: string | null;
 }
