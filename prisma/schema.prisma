@@ -220,7 +220,7 @@ model InsuranceCard {
   patientId     Int        @map("patient_id")
   healthPlanId  Int        @map("health_plan_id")
   cardNumber    String     @map("card_number") @db.VarChar(50)
-  expirationDate DateTime  @map("expiration_date") @db.Date
+  expirationDate DateTime? @map("expiration_date") @db.Date
   patient       Patient    @relation(fields: [patientId], references: [id], onDelete: Restrict)
   healthPlan    HealthPlan @relation(fields: [healthPlanId], references: [id], onDelete: Restrict)
 
