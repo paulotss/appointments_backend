@@ -37,6 +37,44 @@ describe('GuideImportsService commit', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it('forwards used quantity and the current user when committing', async () => {
+    prisma.healthPlan.findUnique.mockResolvedValue({ id: 1 });
+    prisma.healthProfessional.findUnique.mockResolvedValue({ id: 2 });
+    prisma.procedure.findMany.mockResolvedValue([{ id: 9 }]);
+    prisma.healthPlanProcedure.findMany.mockResolvedValue([{ procedureId: 9 }]);
+    const tx = {
+      patient: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 3,
+          insuranceCards: [{ healthPlanId: 1 }],
+        }),
+      },
+    };
+    prisma.$transaction.mockImplementation(
+      async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+    );
+    insuranceGuidesService.create.mockResolvedValue({ id: 10 });
+
+    await service.commit(
+      {
+        healthPlanId: 1,
+        healthProfessionalId: 2,
+        procedures: [{ procedureId: 9, authorizedQuantity: 8, usedQuantity: 8 }],
+        patient: { mode: 'existing', patientId: 3 },
+      },
+      { isAdmin: true },
+    );
+
+    expect(insuranceGuidesService.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        patientId: 3,
+        procedures: [{ procedureId: 9, authorizedQuantity: 8, usedQuantity: 8 }],
+      }),
+      tx,
+      { isAdmin: true },
+    );
+  });
+
   it('rejects analyze without a file', async () => {
     await expect(service.analyze(undefined)).rejects.toBeInstanceOf(
       BadRequestException,

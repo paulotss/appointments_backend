@@ -53,7 +53,10 @@ export class GuideImportsService {
     return this.matcher.match(sanitizeExtractedGuide(raw));
   }
 
-  async commit(dto: CommitGuideImportDto) {
+  async commit(
+    dto: CommitGuideImportDto,
+    currentUser?: { isAdmin: boolean },
+  ) {
     await this.assertPlanProfessionalAndProceduresExist(dto);
 
     return this.prisma.$transaction(async (tx) => {
@@ -76,6 +79,7 @@ export class GuideImportsService {
           }),
         },
         tx,
+        currentUser,
       );
     });
   }

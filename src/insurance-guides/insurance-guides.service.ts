@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -50,7 +51,12 @@ export class InsuranceGuidesService {
   async create(
     createInsuranceGuideDto: CreateInsuranceGuideDto,
     tx?: Prisma.TransactionClient,
+    currentUser?: { isAdmin: boolean },
   ) {
+    this.assertManualUsedQuantity(
+      createInsuranceGuideDto.procedures,
+      currentUser,
+    );
     const db: GuideDb = tx ?? this.prisma;
     const healthPlan = await this.ensureHealthPlanExists(
       createInsuranceGuideDto.healthPlanId,
@@ -101,6 +107,7 @@ export class InsuranceGuidesService {
             create: createInsuranceGuideDto.procedures.map((item) => ({
               procedureId: item.procedureId,
               authorizedQuantity: item.authorizedQuantity,
+              usedQuantity: item.usedQuantity ?? 0,
               value: item.value ?? procedureValues.get(item.procedureId)!,
             })),
           },
@@ -136,6 +143,9 @@ export class InsuranceGuidesService {
         isBilled: false,
         billingBatchGuide: { is: null },
         procedures: { some: { usedQuantity: { gt: 0 } } },
+      }),
+      ...(query.withoutAppointment === true && {
+        clinicalAppointmentGuides: { none: {} },
       }),
     };
 
@@ -355,6 +365,27 @@ export class InsuranceGuidesService {
     return this.prisma.insuranceGuideDocument.delete({
       where: { id: documentId },
     });
+  }
+
+  private assertManualUsedQuantity(
+    procedures: InsuranceGuideProcedureInputDto[],
+    currentUser?: { isAdmin: boolean },
+  ) {
+    const usesQuantity = procedures.some((item) => (item.usedQuantity ?? 0) > 0);
+    if (usesQuantity && !currentUser?.isAdmin) {
+      throw new ForbiddenException(
+        'Only admins can set used quantity without an appointment',
+      );
+    }
+
+    for (const item of procedures) {
+      const usedQuantity = item.usedQuantity ?? 0;
+      if (usedQuantity > item.authorizedQuantity) {
+        throw new BadRequestException(
+          `usedQuantity for procedure ${item.procedureId} cannot exceed authorizedQuantity ${item.authorizedQuantity}`,
+        );
+      }
+    }
   }
 
   private async syncGuideProcedures(

@@ -3,10 +3,20 @@ import {
   Controller,
   Post,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import type { UploadedFile as UploadedFilePayload } from '../uploads/uploaded-file';
 import { CommitGuideImportDto } from './dto/commit-guide-import.dto';
 import { MatchGuideImportDto } from './dto/extracted-guide.dto';
@@ -51,12 +61,14 @@ export class GuideImportsController {
   }
 
   @Post('commit')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT')
   @ApiOperation({
     summary: 'Confirmar importacao da guia',
     description:
-      'Cria o paciente e a carteirinha se necessario e cadastra a guia. Plano, profissional e procedimento precisam ja existir.',
+      'Cria o paciente e a carteirinha se necessario e cadastra a guia. Plano, profissional e procedimento precisam ja existir. usedQuantity em cada procedimento grava uso sem agendamento e so e aceito para admin.',
   })
-  commit(@Body() dto: CommitGuideImportDto) {
-    return this.guideImportsService.commit(dto);
+  commit(@Body() dto: CommitGuideImportDto, @CurrentUser() user: JwtPayload) {
+    return this.guideImportsService.commit(dto, user);
   }
 }

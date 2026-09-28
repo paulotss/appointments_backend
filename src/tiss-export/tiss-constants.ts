@@ -6,7 +6,7 @@ export const TISS_INDICACAO_ACIDENTE = '9';
 export const TISS_REGIME_ATENDIMENTO = '01';
 export const TISS_TIPO_CONSULTA = '1';
 export const TISS_CARATER_ATENDIMENTO = '1';
-export const TISS_TIPO_ATENDIMENTO = '05';
+export const TISS_TIPO_ATENDIMENTO = '23';
 export const TISS_REDUCAO_ACRESCIMO = '1.00';
 export const TISS_TIPO_TRANSACAO = 'ENVIO_LOTE_GUIAS';
 
