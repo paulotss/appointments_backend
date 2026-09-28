@@ -10,16 +10,21 @@ import {
   Query,
   StreamableFile,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
+  ApiBearerAuth,
   ApiBody,
   ApiConsumes,
   ApiOperation,
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { BillingBatchesService } from '../billing-batches/billing-batches.service';
 import type { UploadedFile as UploadedFilePayload } from '../uploads/uploaded-file';
 import { CreateInsuranceGuideDto } from './dto/create-insurance-guide.dto';
@@ -36,20 +41,29 @@ export class InsuranceGuidesController {
   ) {}
 
   @Post()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT')
   @ApiOperation({
     summary: 'Criar guia de plano de saude',
     description:
-      'Cria a guia com status=pending e isBilled=false. O faturamento ocorre via lote (billing-batches) ou pela guia individual (POST /insurance-guides/:id/bill). Envie procedures com quantidade autorizada por item. authorizationDate, expirationDate e guideNumber sao opcionais: a autorizacao default e hoje e a validade default e autorizacao + prazo do plano.',
+      'Cria a guia com status=pending e isBilled=false. O faturamento ocorre via lote (billing-batches) ou pela guia individual (POST /insurance-guides/:id/bill). Envie procedures com quantidade autorizada por item. authorizationDate, expirationDate e guideNumber sao opcionais: a autorizacao default e hoje e a validade default e autorizacao + prazo do plano. usedQuantity em cada procedimento grava uso sem agendamento e so e aceito para admin.',
   })
-  create(@Body() createInsuranceGuideDto: CreateInsuranceGuideDto) {
-    return this.insuranceGuidesService.create(createInsuranceGuideDto);
+  create(
+    @Body() createInsuranceGuideDto: CreateInsuranceGuideDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.insuranceGuidesService.create(
+      createInsuranceGuideDto,
+      undefined,
+      user,
+    );
   }
 
   @Get()
   @ApiOperation({
     summary: 'Listar guias de plano de saude',
     description:
-      'Filtros opcionais: isBilled, availableForBilling, status, patientId, healthProfessionalId, healthPlanId. Paginado com page/limit.',
+      'Filtros opcionais: isBilled, availableForBilling, withoutAppointment, status, patientId, healthProfessionalId, healthPlanId. Paginado com page/limit.',
   })
   findAll(@Query() query: ListInsuranceGuidesQueryDto) {
     return this.insuranceGuidesService.findAll(query);

@@ -29,6 +29,17 @@ export class CommitGuideImportProcedureDto {
   @IsInt()
   @Min(1)
   authorizedQuantity!: number;
+
+  @ApiPropertyOptional({
+    example: 1,
+    description:
+      'Quantidade ja utilizada, sem agendamento. Somente admin. Se omitida, permanece 0.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  usedQuantity?: number;
 }
 
 export class CommitGuideImportPatientDto {

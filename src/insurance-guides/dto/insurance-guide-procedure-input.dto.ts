@@ -19,6 +19,17 @@ export class InsuranceGuideProcedureInputDto {
   authorizedQuantity!: number;
 
   @ApiPropertyOptional({
+    example: 10,
+    description:
+      'Quantidade ja utilizada, sem agendamento. Somente admin na criacao. Se omitida, permanece 0. Ignorada na atualizacao.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  usedQuantity?: number;
+
+  @ApiPropertyOptional({
     example: 80.0,
     description:
       'Valor deste procedimento na guia. Se omitido, usa o preco do plano',

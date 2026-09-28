@@ -75,6 +75,17 @@ export class ListInsuranceGuidesQueryDto {
   @IsBoolean()
   availableForBilling?: boolean;
 
+  @ApiPropertyOptional({
+    type: Boolean,
+    example: true,
+    description:
+      'Se true, lista apenas guias sem agendamento clinico associado',
+  })
+  @IsOptional()
+  @Transform(toOptionalBoolean)
+  @IsBoolean()
+  withoutAppointment?: boolean;
+
   @ApiPropertyOptional({ example: 1, default: 1 })
   @IsOptional()
   @Type(() => Number)

@@ -139,6 +139,7 @@ describe('buildLoteXml', () => {
       ],
     });
     expect(xml).toContain('<ans:guiaSP-SADT>');
+    expect(xml).toContain('<ans:tipoAtendimento>23</ans:tipoAtendimento>');
     expect(xml).toContain(
       '<ans:codigoPrestadorNaOperadora>99999</ans:codigoPrestadorNaOperadora>',
     );
