@@ -4,8 +4,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  ClinicalAppointmentProcedureOrigin,
   ClinicalAppointmentStatus,
   ClinicalAppointmentType,
+  PatientPackageStatus,
   Prisma,
 } from '@prisma/client';
 import {
@@ -16,6 +18,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateClinicalAppointmentDto } from './dto/create-clinical-appointment.dto';
 import { ListClinicalAppointmentsQueryDto } from './dto/list-clinical-appointments-query.dto';
 import { UpdateClinicalAppointmentDto } from './dto/update-clinical-appointment.dto';
+
+const STATUSES_THAT_RESERVE: ClinicalAppointmentStatus[] = [
+  ClinicalAppointmentStatus.marked,
+  ClinicalAppointmentStatus.confirmed,
+  ClinicalAppointmentStatus.waiting,
+  ClinicalAppointmentStatus.attended,
+];
 
 const appointmentInclude = {
   patient: true,
@@ -32,7 +41,15 @@ const appointmentInclude = {
       },
     },
   },
-  procedures: { include: { procedure: true } },
+  procedures: {
+    include: {
+      procedure: true,
+      patientPackageItem: {
+        include: { patientPackage: { include: { package: true } } },
+      },
+      insuranceGuide: true,
+    },
+  },
 } as const;
 
 const guideForAppointmentInclude = {
@@ -43,6 +60,13 @@ const guideForAppointmentInclude = {
 type GuideForAppointment = Prisma.InsuranceGuideGetPayload<{
   include: typeof guideForAppointmentInclude;
 }>;
+
+type ProcedureLine = {
+  procedureId: number;
+  origin: ClinicalAppointmentProcedureOrigin;
+  patientPackageItemId?: number;
+  insuranceGuideId?: number;
+};
 
 @Injectable()
 export class ClinicalAppointmentsService {
@@ -57,56 +81,14 @@ export class ClinicalAppointmentsService {
     const endsAt = new Date(createDto.endsAt);
     this.ensureValidInterval(scheduledAt, endsAt);
 
-    if (createDto.type === ClinicalAppointmentType.private) {
-      if (createDto.insuranceGuideIds !== undefined) {
-        throw new BadRequestException(
-          'insuranceGuideIds must be omitted when type is private',
-        );
-      }
-
-      const procedureIds = this.uniqueIds(
-        createDto.procedureIds,
-        'procedureIds is required when type is private',
-      );
-      await this.ensurePrivateProceduresValid(
-        createDto.healthProfessionalId,
-        procedureIds,
-      );
-
-      return this.prisma.clinicalAppointment.create({
-        data: {
-          patientId: createDto.patientId,
-          healthProfessionalId: createDto.healthProfessionalId,
-          scheduledAt,
-          endsAt,
-          status,
-          type: ClinicalAppointmentType.private,
-          notes: createDto.notes,
-          procedures: {
-            create: procedureIds.map((procedureId) => ({ procedureId })),
-          },
-        },
-        include: appointmentInclude,
-      });
-    }
-
-    const insuranceGuideIds = this.uniqueIds(
-      createDto.insuranceGuideIds,
-      'insuranceGuideIds is required when type is health_plan',
-    );
-
-    if (createDto.procedureIds !== undefined) {
-      throw new BadRequestException(
-        'procedureIds must be omitted when type is health_plan; procedures are copied from the insurance guides',
-      );
-    }
-
-    const guides = await this.loadAndValidateGuides({
-      insuranceGuideIds,
+    const resolved = await this.resolveProcedureLines({
       patientId: createDto.patientId,
       healthProfessionalId: createDto.healthProfessionalId,
+      procedureIds: createDto.procedureIds ?? [],
+      patientPackageItemIds: createDto.patientPackageItemIds ?? [],
+      insuranceGuideIds: createDto.insuranceGuideIds ?? [],
+      consumeNow: status === ClinicalAppointmentStatus.finished,
     });
-    const procedureIds = this.procedureIdsFromGuides(guides);
 
     return this.prisma.$transaction(async (tx) => {
       const appointment = await tx.clinicalAppointment.create({
@@ -116,22 +98,28 @@ export class ClinicalAppointmentsService {
           scheduledAt,
           endsAt,
           status,
-          type: ClinicalAppointmentType.health_plan,
+          type: resolved.type,
           notes: createDto.notes,
           insuranceGuides: {
-            create: insuranceGuideIds.map((insuranceGuideId) => ({
+            create: resolved.insuranceGuideIds.map((insuranceGuideId) => ({
               insuranceGuideId,
             })),
           },
           procedures: {
-            create: procedureIds.map((procedureId) => ({ procedureId })),
+            create: resolved.lines.map((line) => ({
+              procedureId: line.procedureId,
+              origin: line.origin,
+              patientPackageItemId: line.patientPackageItemId,
+              insuranceGuideId: line.insuranceGuideId,
+            })),
           },
         },
         include: appointmentInclude,
       });
 
       if (status === ClinicalAppointmentStatus.finished) {
-        await this.consumeGuides(tx, guides);
+        await this.consumeGuides(tx, resolved.guides);
+        await this.consumePackageItems(tx, resolved.packageItemIds);
       }
 
       return tx.clinicalAppointment.findUniqueOrThrow({
@@ -195,7 +183,6 @@ export class ClinicalAppointmentsService {
     const nextPatientId = updateDto.patientId ?? existing.patientId;
     const nextProfessionalId =
       updateDto.healthProfessionalId ?? existing.healthProfessionalId;
-    const nextType = updateDto.type ?? existing.type;
     const nextStatus = updateDto.status ?? existing.status;
     const nextScheduledAt =
       updateDto.scheduledAt !== undefined
@@ -215,66 +202,81 @@ export class ClinicalAppointmentsService {
       await this.ensureHealthProfessionalExists(updateDto.healthProfessionalId);
     }
 
+    const existingPrivateIds = existing.procedures
+      .filter(
+        (item) => item.origin === ClinicalAppointmentProcedureOrigin.private,
+      )
+      .map((item) => item.procedureId);
+    const existingPackageItemIds = existing.procedures
+      .filter(
+        (item) =>
+          item.origin === ClinicalAppointmentProcedureOrigin.package &&
+          item.patientPackageItemId != null,
+      )
+      .map((item) => item.patientPackageItemId as number);
     const existingGuideIds = existing.insuranceGuides.map(
       (item) => item.insuranceGuideId,
     );
-    const nextGuideIds = this.resolveNextGuideIds(
-      existingGuideIds,
-      updateDto,
-      nextType,
-    );
-    const nextGuides =
-      nextType === ClinicalAppointmentType.health_plan
-        ? await this.loadAndValidateGuides({
-            insuranceGuideIds: nextGuideIds,
-            patientId: nextPatientId,
-            healthProfessionalId: nextProfessionalId,
-            alreadyAssociatedIds: existingGuideIds,
-          })
-        : [];
 
-    const nextProcedureIds = await this.resolveNextProcedureIds({
-      existingType: existing.type,
-      existingGuideIds,
-      existingProcedureIds: existing.procedures.map((item) => item.procedureId),
-      nextType,
-      nextGuideIds,
-      nextGuides,
-      nextProfessionalId,
-      updateDto,
+    const resolved = await this.resolveProcedureLines({
+      patientId: nextPatientId,
+      healthProfessionalId: nextProfessionalId,
+      procedureIds:
+        updateDto.procedureIds !== undefined
+          ? updateDto.procedureIds
+          : existingPrivateIds,
+      patientPackageItemIds:
+        updateDto.patientPackageItemIds !== undefined
+          ? updateDto.patientPackageItemIds
+          : existingPackageItemIds,
+      insuranceGuideIds:
+        updateDto.insuranceGuideIds !== undefined
+          ? updateDto.insuranceGuideIds
+          : existingGuideIds,
+      consumeNow: nextStatus === ClinicalAppointmentStatus.finished,
+      excludeAppointmentId: id,
+      alreadyAssociatedGuideIds: existingGuideIds,
     });
 
     const existingGuidesForConsume = existing.insuranceGuides.map(
       (item) => item.insuranceGuide,
     );
     const oldConsumeKey = this.consumeKey(
-      existing.type,
-      existingGuidesForConsume,
       existing.status,
+      existingGuidesForConsume,
+      existingPackageItemIds,
     );
-    const nextConsumeKey = this.consumeKey(nextType, nextGuides, nextStatus);
+    const nextConsumeKey = this.consumeKey(
+      nextStatus,
+      resolved.guides,
+      resolved.packageItemIds,
+    );
 
     return this.prisma.$transaction(async (tx) => {
       if (oldConsumeKey && oldConsumeKey !== nextConsumeKey) {
         await this.releaseGuides(tx, existingGuidesForConsume);
+        await this.releasePackageItems(tx, existingPackageItemIds);
       }
 
       await tx.clinicalAppointmentProcedure.deleteMany({
         where: { clinicalAppointmentId: id },
       });
       await tx.clinicalAppointmentProcedure.createMany({
-        data: nextProcedureIds.map((procedureId) => ({
+        data: resolved.lines.map((line) => ({
           clinicalAppointmentId: id,
-          procedureId,
+          procedureId: line.procedureId,
+          origin: line.origin,
+          patientPackageItemId: line.patientPackageItemId,
+          insuranceGuideId: line.insuranceGuideId,
         })),
       });
 
       await tx.clinicalAppointmentGuide.deleteMany({
         where: { clinicalAppointmentId: id },
       });
-      if (nextGuideIds.length > 0) {
+      if (resolved.insuranceGuideIds.length > 0) {
         await tx.clinicalAppointmentGuide.createMany({
-          data: nextGuideIds.map((insuranceGuideId) => ({
+          data: resolved.insuranceGuideIds.map((insuranceGuideId) => ({
             clinicalAppointmentId: id,
             insuranceGuideId,
           })),
@@ -289,13 +291,14 @@ export class ClinicalAppointmentsService {
           scheduledAt: nextScheduledAt,
           endsAt: nextEndsAt,
           status: nextStatus,
-          type: nextType,
+          type: resolved.type,
           ...(updateDto.notes !== undefined && { notes: updateDto.notes }),
         },
       });
 
       if (nextConsumeKey && oldConsumeKey !== nextConsumeKey) {
-        await this.consumeGuides(tx, nextGuides);
+        await this.consumeGuides(tx, resolved.guides);
+        await this.consumePackageItems(tx, resolved.packageItemIds);
       }
 
       return tx.clinicalAppointment.findUniqueOrThrow({
@@ -307,18 +310,26 @@ export class ClinicalAppointmentsService {
 
   async remove(id: number) {
     const existing = await this.findOne(id);
+    const packageItemIds = existing.procedures
+      .filter(
+        (item) =>
+          item.origin === ClinicalAppointmentProcedureOrigin.package &&
+          item.patientPackageItemId != null,
+      )
+      .map((item) => item.patientPackageItemId as number);
 
     return this.prisma.$transaction(async (tx) => {
       const key = this.consumeKey(
-        existing.type,
-        existing.insuranceGuides.map((item) => item.insuranceGuide),
         existing.status,
+        existing.insuranceGuides.map((item) => item.insuranceGuide),
+        packageItemIds,
       );
       if (key) {
         await this.releaseGuides(
           tx,
           existing.insuranceGuides.map((item) => item.insuranceGuide),
         );
+        await this.releasePackageItems(tx, packageItemIds);
       }
 
       return tx.clinicalAppointment.delete({
@@ -328,109 +339,144 @@ export class ClinicalAppointmentsService {
     });
   }
 
-  private resolveNextGuideIds(
-    existingGuideIds: number[],
-    updateDto: UpdateClinicalAppointmentDto,
-    nextType: ClinicalAppointmentType,
-  ): number[] {
-    if (nextType === ClinicalAppointmentType.private) {
-      if (updateDto.insuranceGuideIds !== undefined) {
-        throw new BadRequestException(
-          'insuranceGuideIds must be omitted when type is private',
-        );
-      }
-      return [];
-    }
+  private async resolveProcedureLines(params: {
+    patientId: number;
+    healthProfessionalId: number;
+    procedureIds: number[];
+    patientPackageItemIds: number[];
+    insuranceGuideIds: number[];
+    consumeNow: boolean;
+    excludeAppointmentId?: number;
+    alreadyAssociatedGuideIds?: number[];
+  }): Promise<{
+    lines: ProcedureLine[];
+    type: ClinicalAppointmentType;
+    insuranceGuideIds: number[];
+    packageItemIds: number[];
+    guides: GuideForAppointment[];
+  }> {
+    const privateIds = this.optionalUniqueIds(params.procedureIds);
+    const packageItemIds = this.optionalUniqueIds(params.patientPackageItemIds);
+    const insuranceGuideIds = this.optionalUniqueIds(params.insuranceGuideIds);
 
-    if (updateDto.insuranceGuideIds !== undefined) {
-      return this.uniqueIds(
-        updateDto.insuranceGuideIds,
-        'insuranceGuideIds is required when type is health_plan',
-      );
-    }
-
-    if (existingGuideIds.length === 0) {
+    if (
+      privateIds.length === 0 &&
+      packageItemIds.length === 0 &&
+      insuranceGuideIds.length === 0
+    ) {
       throw new BadRequestException(
-        'insuranceGuideIds is required when type is health_plan',
+        'At least one procedure from private, package or health plan is required',
       );
     }
 
-    return existingGuideIds;
+    if (privateIds.length > 0) {
+      await this.ensurePrivateProceduresValid(
+        params.healthProfessionalId,
+        privateIds,
+      );
+    }
+
+    const packageItems =
+      packageItemIds.length > 0
+        ? await this.ensurePackageItemsValid({
+            patientId: params.patientId,
+            healthProfessionalId: params.healthProfessionalId,
+            patientPackageItemIds: packageItemIds,
+            consumeNow: params.consumeNow,
+            excludeAppointmentId: params.excludeAppointmentId,
+          })
+        : [];
+
+    const guides =
+      insuranceGuideIds.length > 0
+        ? await this.loadAndValidateGuides({
+            insuranceGuideIds,
+            patientId: params.patientId,
+            healthProfessionalId: params.healthProfessionalId,
+            alreadyAssociatedIds: params.alreadyAssociatedGuideIds,
+          })
+        : [];
+
+    const lines: ProcedureLine[] = [
+      ...privateIds.map((procedureId) => ({
+        procedureId,
+        origin: ClinicalAppointmentProcedureOrigin.private,
+      })),
+      ...packageItems.map((item) => ({
+        procedureId: item.procedureId,
+        origin: ClinicalAppointmentProcedureOrigin.package,
+        patientPackageItemId: item.id,
+      })),
+      ...this.linesFromGuides(guides),
+    ];
+
+    this.ensureNoDuplicateProcedures(lines);
+
+    return {
+      lines,
+      type: this.deriveType(lines),
+      insuranceGuideIds,
+      packageItemIds,
+      guides,
+    };
   }
 
-  private async resolveNextProcedureIds(params: {
-    existingType: ClinicalAppointmentType;
-    existingGuideIds: number[];
-    existingProcedureIds: number[];
-    nextType: ClinicalAppointmentType;
-    nextGuideIds: number[];
-    nextGuides: GuideForAppointment[];
-    nextProfessionalId: number;
-    updateDto: UpdateClinicalAppointmentDto;
-  }): Promise<number[]> {
-    if (params.nextType === ClinicalAppointmentType.private) {
-      if (params.updateDto.procedureIds !== undefined) {
-        const procedureIds = this.uniqueIds(
-          params.updateDto.procedureIds,
-          'procedureIds is required when type is private',
-        );
-        await this.ensurePrivateProceduresValid(
-          params.nextProfessionalId,
-          procedureIds,
-        );
-        return procedureIds;
-      }
-
-      if (params.existingType !== ClinicalAppointmentType.private) {
-        throw new BadRequestException(
-          'procedureIds is required when changing type to private',
-        );
-      }
-
-      if (params.existingProcedureIds.length === 0) {
-        throw new BadRequestException(
-          'procedureIds is required when type is private',
-        );
-      }
-
-      await this.ensurePrivateProceduresValid(
-        params.nextProfessionalId,
-        params.existingProcedureIds,
-      );
-      return params.existingProcedureIds;
+  private deriveType(lines: ProcedureLine[]): ClinicalAppointmentType {
+    const hasPlan = lines.some(
+      (line) => line.origin === ClinicalAppointmentProcedureOrigin.health_plan,
+    );
+    const hasPrivateOrPackage = lines.some(
+      (line) =>
+        line.origin === ClinicalAppointmentProcedureOrigin.private ||
+        line.origin === ClinicalAppointmentProcedureOrigin.package,
+    );
+    if (hasPlan && hasPrivateOrPackage) {
+      return ClinicalAppointmentType.mixed;
     }
+    if (hasPlan) {
+      return ClinicalAppointmentType.health_plan;
+    }
+    return ClinicalAppointmentType.private;
+  }
 
-    if (params.updateDto.procedureIds !== undefined) {
+  private linesFromGuides(guides: GuideForAppointment[]): ProcedureLine[] {
+    const lines: ProcedureLine[] = [];
+    const seen = new Set<number>();
+    for (const guide of guides) {
+      for (const item of guide.procedures) {
+        if (seen.has(item.procedureId)) {
+          continue;
+        }
+        seen.add(item.procedureId);
+        lines.push({
+          procedureId: item.procedureId,
+          origin: ClinicalAppointmentProcedureOrigin.health_plan,
+          insuranceGuideId: guide.id,
+        });
+      }
+    }
+    return lines;
+  }
+
+  private ensureNoDuplicateProcedures(lines: ProcedureLine[]) {
+    const ids = lines.map((line) => line.procedureId);
+    if (new Set(ids).size !== ids.length) {
       throw new BadRequestException(
-        'procedureIds must be omitted when type is health_plan; procedures are copied from the insurance guides',
+        'The same procedure cannot be added from more than one origin in the same appointment',
       );
     }
-
-    const shouldCopyFromGuides =
-      params.existingType !== ClinicalAppointmentType.health_plan ||
-      !this.sameIdSet(params.existingGuideIds, params.nextGuideIds);
-
-    if (shouldCopyFromGuides) {
-      return this.procedureIdsFromGuides(params.nextGuides);
-    }
-
-    return params.existingProcedureIds;
   }
 
   private consumeKey(
-    type: ClinicalAppointmentType,
-    guides: Array<{ id: number; procedures: Array<{ procedureId: number }> }>,
     status: ClinicalAppointmentStatus,
+    guides: Array<{ id: number; procedures: Array<{ procedureId: number }> }>,
+    packageItemIds: number[],
   ): string | null {
-    if (
-      type !== ClinicalAppointmentType.health_plan ||
-      status !== ClinicalAppointmentStatus.finished ||
-      guides.length === 0
-    ) {
+    if (status !== ClinicalAppointmentStatus.finished) {
       return null;
     }
 
-    return guides
+    const guidePart = guides
       .map((guide) => {
         const procedureIds = guide.procedures
           .map((item) => item.procedureId)
@@ -439,6 +485,11 @@ export class ClinicalAppointmentsService {
       })
       .sort()
       .join('|');
+    const packagePart = [...packageItemIds].sort((a, b) => a - b).join(',');
+    if (!guidePart && !packagePart) {
+      return null;
+    }
+    return `${guidePart}|pkg:${packagePart}`;
   }
 
   private ensureValidInterval(scheduledAt: Date, endsAt: Date) {
@@ -447,38 +498,15 @@ export class ClinicalAppointmentsService {
     }
   }
 
-  private uniqueIds(
-    ids: number[] | undefined,
-    requiredMessage: string,
-  ): number[] {
-    if (!ids?.length) {
-      throw new BadRequestException(requiredMessage);
+  private optionalUniqueIds(ids: number[]): number[] {
+    if (ids.length === 0) {
+      return [];
     }
-
     const unique = [...new Set(ids)];
     if (unique.length !== ids.length) {
       throw new BadRequestException('IDs cannot contain duplicates');
     }
-
     return unique;
-  }
-
-  private sameIdSet(left: number[], right: number[]): boolean {
-    if (left.length !== right.length) {
-      return false;
-    }
-    const rightSet = new Set(right);
-    return left.every((id) => rightSet.has(id));
-  }
-
-  private procedureIdsFromGuides(guides: GuideForAppointment[]): number[] {
-    return [
-      ...new Set(
-        guides.flatMap((guide) =>
-          guide.procedures.map((item) => item.procedureId),
-        ),
-      ),
-    ];
   }
 
   private async ensurePrivateProceduresValid(
@@ -496,6 +524,16 @@ export class ClinicalAppointmentsService {
       throw new NotFoundException(`Procedure ${missing} not found`);
     }
 
+    await this.ensureProceduresMatchProfessional(
+      healthProfessionalId,
+      procedures,
+    );
+  }
+
+  private async ensureProceduresMatchProfessional(
+    healthProfessionalId: number,
+    procedures: Array<{ id: number; specialtyId: number }>,
+  ) {
     const links = await this.prisma.healthProfessionalSpecialty.findMany({
       where: { healthProfessionalId },
       select: { specialtyId: true },
@@ -509,6 +547,97 @@ export class ClinicalAppointmentsService {
         );
       }
     }
+  }
+
+  private async ensurePackageItemsValid(params: {
+    patientId: number;
+    healthProfessionalId: number;
+    patientPackageItemIds: number[];
+    consumeNow: boolean;
+    excludeAppointmentId?: number;
+  }): Promise<Array<{ id: number; procedureId: number }>> {
+    const items = await this.prisma.patientPackageItem.findMany({
+      where: { id: { in: params.patientPackageItemIds } },
+      include: {
+        procedure: { select: { id: true, specialtyId: true } },
+        patientPackage: true,
+      },
+    });
+
+    if (items.length !== params.patientPackageItemIds.length) {
+      const found = new Set(items.map((item) => item.id));
+      const missing = params.patientPackageItemIds.find((id) => !found.has(id));
+      throw new NotFoundException(`Patient package item ${missing} not found`);
+    }
+
+    const reservedByItemId = await this.reservedPackageQuantities(
+      params.patientPackageItemIds,
+      params.excludeAppointmentId,
+    );
+
+    await this.ensureProceduresMatchProfessional(
+      params.healthProfessionalId,
+      items.map((item) => item.procedure),
+    );
+
+    for (const item of items) {
+      if (item.patientPackage.patientId !== params.patientId) {
+        throw new BadRequestException(
+          `Patient package item ${item.id} does not belong to patient ${params.patientId}`,
+        );
+      }
+      if (item.patientPackage.status === PatientPackageStatus.cancelled) {
+        throw new BadRequestException(
+          `Patient package ${item.patientPackageId} is cancelled`,
+        );
+      }
+      const reserved = params.consumeNow
+        ? 0
+        : (reservedByItemId.get(item.id) ?? 0);
+      const remaining = item.quantity - item.usedQuantity - reserved;
+      if (remaining <= 0) {
+        throw new BadRequestException(
+          `Patient package item ${item.id} has no remaining quantity`,
+        );
+      }
+    }
+
+    return items.map((item) => ({
+      id: item.id,
+      procedureId: item.procedureId,
+    }));
+  }
+
+  private async reservedPackageQuantities(
+    itemIds: number[],
+    excludeAppointmentId?: number,
+  ): Promise<Map<number, number>> {
+    const map = new Map<number, number>();
+    if (itemIds.length === 0) {
+      return map;
+    }
+
+    const grouped = await this.prisma.clinicalAppointmentProcedure.groupBy({
+      by: ['patientPackageItemId'],
+      where: {
+        origin: ClinicalAppointmentProcedureOrigin.package,
+        patientPackageItemId: { in: itemIds },
+        clinicalAppointment: {
+          status: { in: STATUSES_THAT_RESERVE },
+          ...(excludeAppointmentId !== undefined && {
+            id: { not: excludeAppointmentId },
+          }),
+        },
+      },
+      _count: { _all: true },
+    });
+
+    for (const row of grouped) {
+      if (row.patientPackageItemId != null) {
+        map.set(row.patientPackageItemId, row._count._all);
+      }
+    }
+    return map;
   }
 
   private async loadAndValidateGuides(params: {
@@ -627,6 +756,86 @@ export class ClinicalAppointmentsService {
           AND "procedure_id" = ${procedureId}
           AND "used_quantity" > 0
       `;
+    }
+  }
+
+  private async consumePackageItems(
+    tx: Prisma.TransactionClient,
+    itemIds: number[],
+  ) {
+    const packageIds = new Set<number>();
+    for (const itemId of itemIds) {
+      const rows = await tx.$executeRaw`
+        UPDATE "patient_package_items"
+        SET "used_quantity" = "used_quantity" + 1
+        WHERE "id" = ${itemId}
+          AND "used_quantity" < "quantity"
+      `;
+      if (rows === 0) {
+        throw new BadRequestException(
+          `Patient package item ${itemId} has no remaining quantity`,
+        );
+      }
+      const item = await tx.patientPackageItem.findUnique({
+        where: { id: itemId },
+        select: { patientPackageId: true },
+      });
+      if (item) {
+        packageIds.add(item.patientPackageId);
+      }
+    }
+    for (const patientPackageId of packageIds) {
+      await this.refreshPatientPackageStatus(tx, patientPackageId);
+    }
+  }
+
+  private async releasePackageItems(
+    tx: Prisma.TransactionClient,
+    itemIds: number[],
+  ) {
+    const packageIds = new Set<number>();
+    for (const itemId of itemIds) {
+      await tx.$executeRaw`
+        UPDATE "patient_package_items"
+        SET "used_quantity" = "used_quantity" - 1
+        WHERE "id" = ${itemId}
+          AND "used_quantity" > 0
+      `;
+      const item = await tx.patientPackageItem.findUnique({
+        where: { id: itemId },
+        select: { patientPackageId: true },
+      });
+      if (item) {
+        packageIds.add(item.patientPackageId);
+      }
+    }
+    for (const patientPackageId of packageIds) {
+      await this.refreshPatientPackageStatus(tx, patientPackageId);
+    }
+  }
+
+  private async refreshPatientPackageStatus(
+    tx: Prisma.TransactionClient,
+    patientPackageId: number,
+  ) {
+    const record = await tx.patientPackage.findUnique({
+      where: { id: patientPackageId },
+      include: { items: true },
+    });
+    if (!record || record.status === PatientPackageStatus.cancelled) {
+      return;
+    }
+    const exhausted =
+      record.items.length > 0 &&
+      record.items.every((item) => item.usedQuantity >= item.quantity);
+    const next = exhausted
+      ? PatientPackageStatus.exhausted
+      : PatientPackageStatus.active;
+    if (record.status !== next) {
+      await tx.patientPackage.update({
+        where: { id: patientPackageId },
+        data: { status: next },
+      });
     }
   }
 

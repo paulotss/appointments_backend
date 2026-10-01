@@ -25,7 +25,7 @@ export class FinancialEntriesController {
   @ApiOperation({
     summary: 'Registrar pagamento de procedimento particular',
     description:
-      'Gera a entrada ja paga a partir de um agendamento particular finished. discountAmount e surchargeAmount sao opcionais. O valor liquido e calculado no servidor.',
+      'Gera a entrada ja paga a partir dos procedimentos avulsos de um agendamento particular ou misto finished. Itens de pacote nao sao cobrados. discountAmount e surchargeAmount sao opcionais.',
   })
   create(@Body() dto: CreatePrivateFinancialEntryDto) {
     return this.financialEntriesService.createPrivateEntry(dto);

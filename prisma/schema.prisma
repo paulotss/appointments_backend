@@ -74,8 +74,25 @@ enum ClinicalAppointmentStatus {
 enum ClinicalAppointmentType {
   private     @map("particular")
   health_plan @map("plano_de_saude")
+  mixed       @map("misto")
 
   @@map("clinical_appointment_type_enum")
+}
+
+enum ClinicalAppointmentProcedureOrigin {
+  private     @map("particular")
+  package     @map("pacote")
+  health_plan @map("plano_de_saude")
+
+  @@map("clinical_appointment_procedure_origin_enum")
+}
+
+enum PatientPackageStatus {
+  active     @map("ativo")
+  exhausted  @map("esgotado")
+  cancelled  @map("cancelado")
+
+  @@map("patient_package_status_enum")
 }
 
 enum PaymentMethod {
@@ -91,6 +108,7 @@ enum PaymentMethod {
 enum FinancialEntryType {
   private_procedure @map("procedimento_particular")
   health_plan       @map("plano_de_saude")
+  procedure_package @map("pacote_procedimento")
 
   @@map("financial_entry_type_enum")
 }
@@ -211,6 +229,7 @@ model Patient {
   insuranceCards       InsuranceCard[]
   insuranceGuides      InsuranceGuide[]
   clinicalAppointments ClinicalAppointment[]
+  packages             PatientPackage[]
 
   @@map("patients")
 }
@@ -241,6 +260,8 @@ model Procedure {
   guideProcedures       InsuranceGuideProcedure[]
   appointmentProcedures ClinicalAppointmentProcedure[]
   financialEntryItems   FinancialEntryItem[]
+  packageItems          ProcedurePackageItem[]
+  patientPackageItems   PatientPackageItem[]
 
   @@index([specialtyId])
   @@map("procedures")
@@ -278,6 +299,7 @@ model InsuranceGuide {
   procedures                 InsuranceGuideProcedure[]
   documents                  InsuranceGuideDocument[]
   clinicalAppointmentGuides  ClinicalAppointmentGuide[]
+  appointmentProcedures      ClinicalAppointmentProcedure[]
   billingBatchGuide          BillingBatchGuide?
 
   @@index([patientId])
@@ -355,15 +377,80 @@ model ClinicalAppointmentGuide {
 }
 
 model ClinicalAppointmentProcedure {
-  id                     Int                  @id @default(autoincrement())
-  clinicalAppointmentId  Int                  @map("clinical_appointment_id")
-  procedureId            Int                  @map("procedure_id")
-  clinicalAppointment    ClinicalAppointment  @relation(fields: [clinicalAppointmentId], references: [id], onDelete: Cascade)
-  procedure              Procedure            @relation(fields: [procedureId], references: [id], onDelete: Restrict)
+  id                    Int                                 @id @default(autoincrement())
+  clinicalAppointmentId Int                                 @map("clinical_appointment_id")
+  procedureId           Int                                 @map("procedure_id")
+  origin                ClinicalAppointmentProcedureOrigin
+  patientPackageItemId  Int?                                @map("patient_package_item_id")
+  insuranceGuideId      Int?                                @map("insurance_guide_id")
+  clinicalAppointment   ClinicalAppointment                 @relation(fields: [clinicalAppointmentId], references: [id], onDelete: Cascade)
+  procedure             Procedure                           @relation(fields: [procedureId], references: [id], onDelete: Restrict)
+  patientPackageItem    PatientPackageItem?                 @relation(fields: [patientPackageItemId], references: [id], onDelete: Restrict)
+  insuranceGuide        InsuranceGuide?                     @relation(fields: [insuranceGuideId], references: [id], onDelete: Restrict)
 
   @@unique([clinicalAppointmentId, procedureId])
   @@index([procedureId])
+  @@index([patientPackageItemId])
+  @@index([insuranceGuideId])
   @@map("clinical_appointment_procedures")
+}
+
+model ProcedurePackage {
+  id              Int                     @id @default(autoincrement())
+  name            String                  @db.VarChar(150)
+  discountPercent Decimal                 @map("discount_percent") @db.Decimal(5, 2)
+  isActive        Boolean                 @default(true) @map("is_active")
+  createdAt       DateTime                @default(now()) @map("created_at") @db.Timestamp(3)
+  items           ProcedurePackageItem[]
+  patientPackages PatientPackage[]
+
+  @@map("procedure_packages")
+}
+
+model ProcedurePackageItem {
+  id          Int              @id @default(autoincrement())
+  packageId   Int              @map("package_id")
+  procedureId Int              @map("procedure_id")
+  quantity    Int
+  package     ProcedurePackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  procedure   Procedure        @relation(fields: [procedureId], references: [id], onDelete: Restrict)
+
+  @@unique([packageId, procedureId])
+  @@index([procedureId])
+  @@map("procedure_package_items")
+}
+
+model PatientPackage {
+  id             Int                  @id @default(autoincrement())
+  patientId      Int                  @map("patient_id")
+  packageId      Int                  @map("package_id")
+  status         PatientPackageStatus @default(active)
+  assignedAt     DateTime             @default(now()) @map("assigned_at") @db.Timestamp(3)
+  patient        Patient              @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  package        ProcedurePackage     @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  items          PatientPackageItem[]
+  financialEntry FinancialEntry?
+
+  @@index([patientId])
+  @@index([packageId])
+  @@index([status])
+  @@map("patient_packages")
+}
+
+model PatientPackageItem {
+  id                 Int                            @id @default(autoincrement())
+  patientPackageId   Int                            @map("patient_package_id")
+  procedureId        Int                            @map("procedure_id")
+  quantity           Int
+  usedQuantity       Int                            @default(0) @map("used_quantity")
+  unitValue          Decimal                        @map("unit_value") @db.Decimal(10, 2)
+  patientPackage     PatientPackage                 @relation(fields: [patientPackageId], references: [id], onDelete: Cascade)
+  procedure          Procedure                      @relation(fields: [procedureId], references: [id], onDelete: Restrict)
+  appointmentProcedures ClinicalAppointmentProcedure[]
+
+  @@unique([patientPackageId, procedureId])
+  @@index([procedureId])
+  @@map("patient_package_items")
 }
 
 model User {
@@ -567,9 +654,11 @@ model FinancialEntry {
   notes                 String?               @db.Text
   clinicalAppointmentId Int?                  @unique @map("clinical_appointment_id")
   billingBatchId        Int?                  @unique @map("billing_batch_id")
+  patientPackageId      Int?                  @unique @map("patient_package_id")
   createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamp(3)
   clinicalAppointment   ClinicalAppointment?  @relation(fields: [clinicalAppointmentId], references: [id], onDelete: Restrict)
   billingBatch          BillingBatch?         @relation(fields: [billingBatchId], references: [id], onDelete: Restrict)
+  patientPackage        PatientPackage?       @relation(fields: [patientPackageId], references: [id], onDelete: Restrict)
   items                 FinancialEntryItem[]
 
   @@index([type])

@@ -16,6 +16,21 @@ export function centsToMoney(cents: number): number {
   return cents / 100;
 }
 
+export function applyPercentDiscount(
+  unitValue: number,
+  discountPercent: number,
+): number {
+  if (
+    !Number.isFinite(discountPercent) ||
+    discountPercent < 0 ||
+    discountPercent > 100
+  ) {
+    throw new MoneyError('discountPercent must be between 0 and 100');
+  }
+  const unitCents = moneyToCents(unitValue);
+  return centsToMoney(Math.round((unitCents * (100 - discountPercent)) / 100));
+}
+
 export function decimalToNumber(
   value: { toNumber(): number } | number | string,
 ): number {

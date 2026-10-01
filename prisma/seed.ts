@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import {
   CallRecordStatus,
+  ClinicalAppointmentProcedureOrigin,
   ClinicalAppointmentStatus,
   ClinicalAppointmentType,
   ContactMethod,
@@ -453,7 +454,10 @@ async function seedClinicalAppointmentsForCurrentWeek(
               },
             },
             procedures: {
-              create: { procedureId },
+              create: {
+                procedureId,
+                origin: ClinicalAppointmentProcedureOrigin.health_plan,
+              },
             },
           },
         });
@@ -469,7 +473,10 @@ async function seedClinicalAppointmentsForCurrentWeek(
             type,
             notes,
             procedures: {
-              create: { procedureId },
+              create: {
+                procedureId,
+                origin: ClinicalAppointmentProcedureOrigin.private,
+              },
             },
           },
         });

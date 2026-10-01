@@ -18,10 +18,12 @@ import { InsuranceCardsModule } from './insurance-cards/insurance-cards.module';
 import { InsuranceGuidesModule } from './insurance-guides/insurance-guides.module';
 import { MessagesModule } from './messages/messages.module';
 import { AgentDataModule } from './agent-data/agent-data.module';
+import { PatientPackagesModule } from './patient-packages/patient-packages.module';
 import { PatientsModule } from './patients/patients.module';
 import { PayablesModule } from './payables/payables.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProceduresModule } from './procedures/procedures.module';
+import { ProcedurePackagesModule } from './procedure-packages/procedure-packages.module';
 import { ProductsModule } from './products/products.module';
 import { SectorsModule } from './sectors/sectors.module';
 import { SpecialtiesModule } from './specialties/specialties.module';
@@ -39,6 +41,8 @@ import { UsersModule } from './users/users.module';
     HealthProfessionalsModule,
     HealthPlansModule,
     PatientsModule,
+    PatientPackagesModule,
+    ProcedurePackagesModule,
     AgentDataModule,
     HigiaModule,
     InsuranceCardsModule,

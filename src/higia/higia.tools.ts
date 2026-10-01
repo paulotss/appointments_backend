@@ -126,7 +126,7 @@ export const HIGIA_TOOLS: HigiaToolDefinition[] = [
             'absent',
           ],
         },
-        type: { type: 'string', enum: ['private', 'health_plan'] },
+        type: { type: 'string', enum: ['private', 'health_plan', 'mixed'] },
         insuranceGuideId: { type: 'integer' },
         ...paginationProperties,
       },
@@ -239,7 +239,7 @@ export const HIGIA_TOOLS: HigiaToolDefinition[] = [
       properties: {
         type: {
           type: 'string',
-          enum: ['private_procedure', 'health_plan'],
+          enum: ['private_procedure', 'health_plan', 'procedure_package'],
         },
         status: {
           type: 'string',

@@ -26,7 +26,7 @@ export class ClinicalAppointmentsController {
   @ApiOperation({
     summary: 'Criar agendamento clinico',
     description:
-      'Particular exige procedureIds. Plano de saude exige insuranceGuideIds e copia os procedimentos das guias.',
+      'Aceita avulsos (procedureIds), itens de pacote (patientPackageItemIds) e/ou guias (insuranceGuideIds). O tipo e derivado das origens.',
   })
   create(@Body() createDto: CreateClinicalAppointmentDto) {
     return this.clinicalAppointmentsService.create(createDto);
@@ -53,7 +53,7 @@ export class ClinicalAppointmentsController {
   @ApiOperation({
     summary: 'Atualizar agendamento clinico',
     description:
-      'Ao entrar em finished (plano), incrementa usedQuantity de cada procedimento de cada guia associada. Ao sair, decrementa.',
+      'Ao entrar em finished, incrementa usedQuantity das guias e dos itens de pacote. Ao sair, decrementa.',
   })
   @ApiParam({ name: 'id', example: 1 })
   update(

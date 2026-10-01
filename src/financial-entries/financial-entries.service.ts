@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  ClinicalAppointmentProcedureOrigin,
   ClinicalAppointmentStatus,
   ClinicalAppointmentType,
   FinancialEntryStatus,
@@ -35,6 +36,9 @@ const financialEntryInclude = {
     include: { patient: true, healthProfessional: true },
   },
   billingBatch: { include: { healthPlan: true } },
+  patientPackage: {
+    include: { patient: true, package: true },
+  },
 } as const;
 
 @Injectable()
@@ -55,9 +59,12 @@ export class FinancialEntriesService {
         `Clinical appointment ${dto.clinicalAppointmentId} not found`,
       );
     }
-    if (appointment.type !== ClinicalAppointmentType.private) {
+    if (
+      appointment.type !== ClinicalAppointmentType.private &&
+      appointment.type !== ClinicalAppointmentType.mixed
+    ) {
       throw new BadRequestException(
-        'Financial entry of private procedures requires a private clinical appointment',
+        'Financial entry of private procedures requires a private or mixed clinical appointment',
       );
     }
     if (appointment.status !== ClinicalAppointmentStatus.finished) {
@@ -70,13 +77,17 @@ export class FinancialEntriesService {
         `Clinical appointment ${appointment.id} already has a financial entry`,
       );
     }
-    if (appointment.procedures.length === 0) {
+
+    const privateProcedures = appointment.procedures.filter(
+      (item) => item.origin === ClinicalAppointmentProcedureOrigin.private,
+    );
+    if (privateProcedures.length === 0) {
       throw new BadRequestException(
-        'Clinical appointment has no procedures to bill',
+        'Clinical appointment has no private procedures to bill',
       );
     }
 
-    const items = appointment.procedures.map((item) => ({
+    const items = privateProcedures.map((item) => ({
       procedureId: item.procedureId,
       quantity: 1,
       unitValue: decimalToNumber(item.procedure.value),
