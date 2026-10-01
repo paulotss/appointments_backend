@@ -26,7 +26,7 @@ export class ClinicalAppointmentsController {
   @ApiOperation({
     summary: 'Criar agendamento clinico',
     description:
-      'Aceita avulsos (procedureIds), itens de pacote (patientPackageItemIds) e/ou guias (insuranceGuideIds). O tipo e derivado das origens.',
+      'Aceita avulsos (procedureIds), itens de pacote (patientPackageItemIds), cotas do cartão (benefitUses) e/ou guias (insuranceGuideIds). O tipo e derivado das origens.',
   })
   create(@Body() createDto: CreateClinicalAppointmentDto) {
     return this.clinicalAppointmentsService.create(createDto);

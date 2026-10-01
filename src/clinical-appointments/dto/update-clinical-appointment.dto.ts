@@ -12,7 +12,9 @@ import {
   IsOptional,
   IsString,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { BenefitEntitlementUseDto } from './create-clinical-appointment.dto';
 
 export class UpdateClinicalAppointmentDto {
   @ApiPropertyOptional({ example: 1 })
@@ -87,8 +89,7 @@ export class UpdateClinicalAppointmentDto {
   @ApiPropertyOptional({
     type: [Number],
     example: [1, 2],
-    description:
-      'Substitui avulsos. Omita para manter. Envie [] para remover.',
+    description: 'Substitui avulsos. Omita para manter. Envie [] para remover.',
   })
   @IsOptional()
   @IsArray()
@@ -109,4 +110,15 @@ export class UpdateClinicalAppointmentDto {
   @IsInt({ each: true })
   @Min(1, { each: true })
   patientPackageItemIds?: number[];
+
+  @ApiPropertyOptional({
+    type: [BenefitEntitlementUseDto],
+    description:
+      'Substitui cotas do cartão. Omita para manter. Envie [] para remover.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BenefitEntitlementUseDto)
+  benefitUses?: BenefitEntitlementUseDto[];
 }

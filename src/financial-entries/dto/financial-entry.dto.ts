@@ -53,6 +53,17 @@ export class CreatePrivateFinancialEntryDto {
   notes?: string;
 }
 
+export class ReceiveBenefitInstallmentDto {
+  @ApiProperty({ enum: PaymentMethod })
+  @IsEnum(PaymentMethod)
+  paymentMethod!: PaymentMethod;
+
+  @ApiPropertyOptional({ example: '2026-10-10T15:00:00.000Z' })
+  @IsOptional()
+  @IsDateString()
+  paidAt?: string;
+}
+
 export class ListFinancialEntriesQueryDto {
   @ApiPropertyOptional({ enum: FinancialEntryType })
   @IsOptional()

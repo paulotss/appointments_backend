@@ -11,6 +11,7 @@ import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import {
   CreatePrivateFinancialEntryDto,
   ListFinancialEntriesQueryDto,
+  ReceiveBenefitInstallmentDto,
 } from './dto/financial-entry.dto';
 import { FinancialEntriesService } from './financial-entries.service';
 
@@ -46,5 +47,18 @@ export class FinancialEntriesController {
   @ApiParam({ name: 'id', example: 1 })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.financialEntriesService.findOne(id);
+  }
+
+  @Post(':id/receive')
+  @ApiOperation({
+    summary: 'Receber parcela pendente do cartão',
+    description: 'Marca a parcela como paga pelo valor integral.',
+  })
+  @ApiParam({ name: 'id', example: 1 })
+  receive(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReceiveBenefitInstallmentDto,
+  ) {
+    return this.financialEntriesService.receiveBenefitInstallment(id, dto);
   }
 }

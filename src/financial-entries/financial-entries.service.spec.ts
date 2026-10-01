@@ -15,7 +15,13 @@ describe('FinancialEntriesService.createPrivateEntry', () => {
     clinicalAppointment: { findUnique: jest.fn() },
     financialEntry: { create: jest.fn() },
   };
-  const service = new FinancialEntriesService(prisma as never);
+  const benefitSubscriptions = {
+    currentDiscountPercent: jest.fn().mockResolvedValue(0),
+  };
+  const service = new FinancialEntriesService(
+    prisma as never,
+    benefitSubscriptions as never,
+  );
 
   beforeEach(() => {
     jest.clearAllMocks();

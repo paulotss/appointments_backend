@@ -3,6 +3,8 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { AuthModule } from './auth/auth.module';
+import { BenefitPlansModule } from './benefit-plans/benefit-plans.module';
+import { BenefitSubscriptionsModule } from './benefit-subscriptions/benefit-subscriptions.module';
 import { BillingBatchesModule } from './billing-batches/billing-batches.module';
 import { CallsModule } from './calls/calls.module';
 import { CategoriesModule } from './categories/categories.module';
@@ -43,6 +45,8 @@ import { UsersModule } from './users/users.module';
     PatientsModule,
     PatientPackagesModule,
     ProcedurePackagesModule,
+    BenefitPlansModule,
+    BenefitSubscriptionsModule,
     AgentDataModule,
     HigiaModule,
     InsuranceCardsModule,

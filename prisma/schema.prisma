@@ -83,8 +83,23 @@ enum ClinicalAppointmentProcedureOrigin {
   private     @map("particular")
   package     @map("pacote")
   health_plan @map("plano_de_saude")
+  benefit     @map("cartao")
 
   @@map("clinical_appointment_procedure_origin_enum")
+}
+
+enum BenefitKind {
+  quota    @map("cota")
+  discount @map("desconto")
+
+  @@map("benefit_kind_enum")
+}
+
+enum BenefitSubscriptionStatus {
+  active    @map("ativo")
+  cancelled @map("cancelado")
+
+  @@map("benefit_subscription_status_enum")
 }
 
 enum PatientPackageStatus {
@@ -106,9 +121,10 @@ enum PaymentMethod {
 }
 
 enum FinancialEntryType {
-  private_procedure @map("procedimento_particular")
-  health_plan       @map("plano_de_saude")
-  procedure_package @map("pacote_procedimento")
+  private_procedure    @map("procedimento_particular")
+  health_plan          @map("plano_de_saude")
+  procedure_package    @map("pacote_procedimento")
+  benefit_subscription @map("assinatura_cartao")
 
   @@map("financial_entry_type_enum")
 }
@@ -230,6 +246,8 @@ model Patient {
   insuranceGuides      InsuranceGuide[]
   clinicalAppointments ClinicalAppointment[]
   packages             PatientPackage[]
+  benefitSubscriptions BenefitSubscription[]         @relation("BenefitHolder")
+  benefitDependents    BenefitSubscriptionDependent[]
 
   @@map("patients")
 }
@@ -260,8 +278,10 @@ model Procedure {
   guideProcedures       InsuranceGuideProcedure[]
   appointmentProcedures ClinicalAppointmentProcedure[]
   financialEntryItems   FinancialEntryItem[]
-  packageItems          ProcedurePackageItem[]
-  patientPackageItems   PatientPackageItem[]
+  packageItems                 ProcedurePackageItem[]
+  patientPackageItems          PatientPackageItem[]
+  benefitProcedures            BenefitProcedure[]
+  benefitEntitlementProcedures BenefitEntitlementProcedure[]
 
   @@index([specialtyId])
   @@map("procedures")
@@ -383,15 +403,18 @@ model ClinicalAppointmentProcedure {
   origin                ClinicalAppointmentProcedureOrigin
   patientPackageItemId  Int?                                @map("patient_package_item_id")
   insuranceGuideId      Int?                                @map("insurance_guide_id")
+  benefitEntitlementId  Int?                                @map("benefit_entitlement_id")
   clinicalAppointment   ClinicalAppointment                 @relation(fields: [clinicalAppointmentId], references: [id], onDelete: Cascade)
   procedure             Procedure                           @relation(fields: [procedureId], references: [id], onDelete: Restrict)
   patientPackageItem    PatientPackageItem?                 @relation(fields: [patientPackageItemId], references: [id], onDelete: Restrict)
   insuranceGuide        InsuranceGuide?                     @relation(fields: [insuranceGuideId], references: [id], onDelete: Restrict)
+  benefitEntitlement    BenefitEntitlement?                 @relation(fields: [benefitEntitlementId], references: [id], onDelete: Restrict)
 
   @@unique([clinicalAppointmentId, procedureId])
   @@index([procedureId])
   @@index([patientPackageItemId])
   @@index([insuranceGuideId])
+  @@index([benefitEntitlementId])
   @@map("clinical_appointment_procedures")
 }
 
@@ -655,16 +678,22 @@ model FinancialEntry {
   clinicalAppointmentId Int?                  @unique @map("clinical_appointment_id")
   billingBatchId        Int?                  @unique @map("billing_batch_id")
   patientPackageId      Int?                  @unique @map("patient_package_id")
+  benefitSubscriptionId Int?                  @map("benefit_subscription_id")
+  dueDate               DateTime?             @map("due_date") @db.Date
+  installmentNumber     Int?                  @map("installment_number")
   createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamp(3)
   clinicalAppointment   ClinicalAppointment?  @relation(fields: [clinicalAppointmentId], references: [id], onDelete: Restrict)
   billingBatch          BillingBatch?         @relation(fields: [billingBatchId], references: [id], onDelete: Restrict)
   patientPackage        PatientPackage?       @relation(fields: [patientPackageId], references: [id], onDelete: Restrict)
+  benefitSubscription   BenefitSubscription?  @relation(fields: [benefitSubscriptionId], references: [id], onDelete: Restrict)
   items                 FinancialEntryItem[]
 
   @@index([type])
   @@index([status])
   @@index([createdAt])
   @@index([paidAt])
+  @@index([benefitSubscriptionId])
+  @@index([dueDate])
   @@map("financial_entries")
 }
 
@@ -765,4 +794,126 @@ model BillingBatchGuide {
 
   @@index([billingBatchId])
   @@map("billing_batch_guides")
+}
+
+model BenefitPlan {
+  id            Int                   @id @default(autoincrement())
+  name          String                @db.VarChar(150)
+  annualPrice   Decimal               @map("annual_price") @db.Decimal(10, 2)
+  adhesionFee   Decimal               @default(20) @map("adhesion_fee") @db.Decimal(10, 2)
+  dependentFee  Decimal               @default(5) @map("dependent_fee") @db.Decimal(10, 2)
+  isActive      Boolean               @default(true) @map("is_active")
+  createdAt     DateTime              @default(now()) @map("created_at") @db.Timestamp(3)
+  benefits      Benefit[]
+  subscriptions BenefitSubscription[]
+
+  @@map("benefit_plans")
+}
+
+model Benefit {
+  id              Int                @id @default(autoincrement())
+  planId          Int                @map("plan_id")
+  title           String             @db.VarChar(150)
+  description     String?            @db.Text
+  kind            BenefitKind
+  quantity        Int?
+  discountPercent Decimal?           @map("discount_percent") @db.Decimal(5, 2)
+  plan            BenefitPlan        @relation(fields: [planId], references: [id], onDelete: Cascade)
+  procedures      BenefitProcedure[]
+  entitlements    BenefitEntitlement[]
+
+  @@index([planId])
+  @@map("benefits")
+}
+
+model BenefitProcedure {
+  id          Int       @id @default(autoincrement())
+  benefitId   Int       @map("benefit_id")
+  procedureId Int       @map("procedure_id")
+  benefit     Benefit   @relation(fields: [benefitId], references: [id], onDelete: Cascade)
+  procedure   Procedure @relation(fields: [procedureId], references: [id], onDelete: Restrict)
+
+  @@unique([benefitId, procedureId])
+  @@index([procedureId])
+  @@map("benefit_procedures")
+}
+
+model BenefitSubscription {
+  id                    Int                           @id @default(autoincrement())
+  patientId             Int                           @map("patient_id")
+  planId                Int                           @map("plan_id")
+  startsAt              DateTime                      @map("starts_at") @db.Date
+  expiresAt             DateTime                      @map("expires_at") @db.Date
+  billingDay            Int                           @map("billing_day")
+  installmentCount      Int                           @map("installment_count")
+  status                BenefitSubscriptionStatus     @default(active)
+  cardNumber            String                        @unique @map("card_number") @db.VarChar(20)
+  pagbankSubscriptionId String?                       @map("pagbank_subscription_id") @db.VarChar(80)
+  createdAt             DateTime                      @default(now()) @map("created_at") @db.Timestamp(3)
+  patient               Patient                       @relation("BenefitHolder", fields: [patientId], references: [id], onDelete: Restrict)
+  plan                  BenefitPlan                   @relation(fields: [planId], references: [id], onDelete: Restrict)
+  dependents            BenefitSubscriptionDependent[]
+  entitlements          BenefitEntitlement[]
+  financialEntries      FinancialEntry[]
+
+  @@index([patientId])
+  @@index([planId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("benefit_subscriptions")
+}
+
+model BenefitSubscriptionDependent {
+  id             Int                 @id @default(autoincrement())
+  subscriptionId Int                 @map("subscription_id")
+  patientId      Int                 @map("patient_id")
+  subscription   BenefitSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  patient        Patient             @relation(fields: [patientId], references: [id], onDelete: Restrict)
+
+  @@unique([subscriptionId, patientId])
+  @@index([patientId])
+  @@map("benefit_subscription_dependents")
+}
+
+model BenefitEntitlement {
+  id                    Int                            @id @default(autoincrement())
+  subscriptionId        Int                            @map("subscription_id")
+  benefitId             Int                            @map("benefit_id")
+  kind                  BenefitKind
+  title                 String                         @db.VarChar(150)
+  quantity              Int?
+  usedQuantity          Int                            @default(0) @map("used_quantity")
+  discountPercent       Decimal?                       @map("discount_percent") @db.Decimal(5, 2)
+  subscription          BenefitSubscription            @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  benefit               Benefit                        @relation(fields: [benefitId], references: [id], onDelete: Restrict)
+  procedures            BenefitEntitlementProcedure[]
+  notes                 BenefitNote[]
+  appointmentProcedures ClinicalAppointmentProcedure[]
+
+  @@index([subscriptionId])
+  @@index([benefitId])
+  @@map("benefit_entitlements")
+}
+
+model BenefitEntitlementProcedure {
+  id            Int                @id @default(autoincrement())
+  entitlementId Int                @map("entitlement_id")
+  procedureId   Int                @map("procedure_id")
+  entitlement   BenefitEntitlement @relation(fields: [entitlementId], references: [id], onDelete: Cascade)
+  procedure     Procedure          @relation(fields: [procedureId], references: [id], onDelete: Restrict)
+
+  @@unique([entitlementId, procedureId])
+  @@index([procedureId])
+  @@map("benefit_entitlement_procedures")
+}
+
+model BenefitNote {
+  id            Int                @id @default(autoincrement())
+  entitlementId Int                @map("entitlement_id")
+  description   String             @db.Text
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamp(3)
+  entitlement   BenefitEntitlement @relation(fields: [entitlementId], references: [id], onDelete: Cascade)
+
+  @@index([entitlementId])
+  @@map("benefit_notes")
 }

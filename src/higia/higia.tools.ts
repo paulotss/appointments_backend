@@ -239,7 +239,12 @@ export const HIGIA_TOOLS: HigiaToolDefinition[] = [
       properties: {
         type: {
           type: 'string',
-          enum: ['private_procedure', 'health_plan', 'procedure_package'],
+          enum: [
+            'private_procedure',
+            'health_plan',
+            'procedure_package',
+            'benefit_subscription',
+          ],
         },
         status: {
           type: 'string',

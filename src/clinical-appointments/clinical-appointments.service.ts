@@ -4,6 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  BenefitKind,
+  BenefitSubscriptionStatus,
   ClinicalAppointmentProcedureOrigin,
   ClinicalAppointmentStatus,
   ClinicalAppointmentType,
@@ -13,9 +15,14 @@ import {
 import {
   endOfDaySaoPaulo,
   startOfDaySaoPaulo,
+  todayYmdSaoPaulo,
 } from '../common/datetime/sao-paulo-day-bounds';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateClinicalAppointmentDto } from './dto/create-clinical-appointment.dto';
+import { ymdToUtcDate } from '../benefit-subscriptions/installments';
+import {
+  BenefitEntitlementUseDto,
+  CreateClinicalAppointmentDto,
+} from './dto/create-clinical-appointment.dto';
 import { ListClinicalAppointmentsQueryDto } from './dto/list-clinical-appointments-query.dto';
 import { UpdateClinicalAppointmentDto } from './dto/update-clinical-appointment.dto';
 
@@ -47,6 +54,9 @@ const appointmentInclude = {
       patientPackageItem: {
         include: { patientPackage: { include: { package: true } } },
       },
+      benefitEntitlement: {
+        include: { subscription: { include: { plan: true } } },
+      },
       insuranceGuide: true,
     },
   },
@@ -66,6 +76,7 @@ type ProcedureLine = {
   origin: ClinicalAppointmentProcedureOrigin;
   patientPackageItemId?: number;
   insuranceGuideId?: number;
+  benefitEntitlementId?: number;
 };
 
 @Injectable()
@@ -87,6 +98,8 @@ export class ClinicalAppointmentsService {
       procedureIds: createDto.procedureIds ?? [],
       patientPackageItemIds: createDto.patientPackageItemIds ?? [],
       insuranceGuideIds: createDto.insuranceGuideIds ?? [],
+      benefitUses: createDto.benefitUses ?? [],
+      onYmd: todayYmdSaoPaulo(scheduledAt),
       consumeNow: status === ClinicalAppointmentStatus.finished,
     });
 
@@ -111,6 +124,7 @@ export class ClinicalAppointmentsService {
               origin: line.origin,
               patientPackageItemId: line.patientPackageItemId,
               insuranceGuideId: line.insuranceGuideId,
+              benefitEntitlementId: line.benefitEntitlementId,
             })),
           },
         },
@@ -120,6 +134,10 @@ export class ClinicalAppointmentsService {
       if (status === ClinicalAppointmentStatus.finished) {
         await this.consumeGuides(tx, resolved.guides);
         await this.consumePackageItems(tx, resolved.packageItemIds);
+        await this.consumeBenefitEntitlements(
+          tx,
+          resolved.benefitEntitlementIds,
+        );
       }
 
       return tx.clinicalAppointment.findUniqueOrThrow({
@@ -217,6 +235,19 @@ export class ClinicalAppointmentsService {
     const existingGuideIds = existing.insuranceGuides.map(
       (item) => item.insuranceGuideId,
     );
+    const existingBenefitUses = existing.procedures
+      .filter(
+        (item) =>
+          item.origin === ClinicalAppointmentProcedureOrigin.benefit &&
+          item.benefitEntitlementId != null,
+      )
+      .map((item) => ({
+        entitlementId: item.benefitEntitlementId as number,
+        procedureId: item.procedureId,
+      }));
+    const existingBenefitEntitlementIds = existingBenefitUses.map(
+      (item) => item.entitlementId,
+    );
 
     const resolved = await this.resolveProcedureLines({
       patientId: nextPatientId,
@@ -233,6 +264,11 @@ export class ClinicalAppointmentsService {
         updateDto.insuranceGuideIds !== undefined
           ? updateDto.insuranceGuideIds
           : existingGuideIds,
+      benefitUses:
+        updateDto.benefitUses !== undefined
+          ? updateDto.benefitUses
+          : existingBenefitUses,
+      onYmd: todayYmdSaoPaulo(nextScheduledAt),
       consumeNow: nextStatus === ClinicalAppointmentStatus.finished,
       excludeAppointmentId: id,
       alreadyAssociatedGuideIds: existingGuideIds,
@@ -245,17 +281,23 @@ export class ClinicalAppointmentsService {
       existing.status,
       existingGuidesForConsume,
       existingPackageItemIds,
+      existingBenefitEntitlementIds,
     );
     const nextConsumeKey = this.consumeKey(
       nextStatus,
       resolved.guides,
       resolved.packageItemIds,
+      resolved.benefitEntitlementIds,
     );
 
     return this.prisma.$transaction(async (tx) => {
       if (oldConsumeKey && oldConsumeKey !== nextConsumeKey) {
         await this.releaseGuides(tx, existingGuidesForConsume);
         await this.releasePackageItems(tx, existingPackageItemIds);
+        await this.releaseBenefitEntitlements(
+          tx,
+          existingBenefitEntitlementIds,
+        );
       }
 
       await tx.clinicalAppointmentProcedure.deleteMany({
@@ -268,6 +310,7 @@ export class ClinicalAppointmentsService {
           origin: line.origin,
           patientPackageItemId: line.patientPackageItemId,
           insuranceGuideId: line.insuranceGuideId,
+          benefitEntitlementId: line.benefitEntitlementId,
         })),
       });
 
@@ -299,6 +342,10 @@ export class ClinicalAppointmentsService {
       if (nextConsumeKey && oldConsumeKey !== nextConsumeKey) {
         await this.consumeGuides(tx, resolved.guides);
         await this.consumePackageItems(tx, resolved.packageItemIds);
+        await this.consumeBenefitEntitlements(
+          tx,
+          resolved.benefitEntitlementIds,
+        );
       }
 
       return tx.clinicalAppointment.findUniqueOrThrow({
@@ -317,12 +364,20 @@ export class ClinicalAppointmentsService {
           item.patientPackageItemId != null,
       )
       .map((item) => item.patientPackageItemId as number);
+    const benefitEntitlementIds = existing.procedures
+      .filter(
+        (item) =>
+          item.origin === ClinicalAppointmentProcedureOrigin.benefit &&
+          item.benefitEntitlementId != null,
+      )
+      .map((item) => item.benefitEntitlementId as number);
 
     return this.prisma.$transaction(async (tx) => {
       const key = this.consumeKey(
         existing.status,
         existing.insuranceGuides.map((item) => item.insuranceGuide),
         packageItemIds,
+        benefitEntitlementIds,
       );
       if (key) {
         await this.releaseGuides(
@@ -330,6 +385,7 @@ export class ClinicalAppointmentsService {
           existing.insuranceGuides.map((item) => item.insuranceGuide),
         );
         await this.releasePackageItems(tx, packageItemIds);
+        await this.releaseBenefitEntitlements(tx, benefitEntitlementIds);
       }
 
       return tx.clinicalAppointment.delete({
@@ -345,6 +401,8 @@ export class ClinicalAppointmentsService {
     procedureIds: number[];
     patientPackageItemIds: number[];
     insuranceGuideIds: number[];
+    benefitUses: BenefitEntitlementUseDto[];
+    onYmd: string;
     consumeNow: boolean;
     excludeAppointmentId?: number;
     alreadyAssociatedGuideIds?: number[];
@@ -353,19 +411,22 @@ export class ClinicalAppointmentsService {
     type: ClinicalAppointmentType;
     insuranceGuideIds: number[];
     packageItemIds: number[];
+    benefitEntitlementIds: number[];
     guides: GuideForAppointment[];
   }> {
     const privateIds = this.optionalUniqueIds(params.procedureIds);
     const packageItemIds = this.optionalUniqueIds(params.patientPackageItemIds);
     const insuranceGuideIds = this.optionalUniqueIds(params.insuranceGuideIds);
+    const benefitUses = params.benefitUses;
 
     if (
       privateIds.length === 0 &&
       packageItemIds.length === 0 &&
-      insuranceGuideIds.length === 0
+      insuranceGuideIds.length === 0 &&
+      benefitUses.length === 0
     ) {
       throw new BadRequestException(
-        'At least one procedure from private, package or health plan is required',
+        'At least one procedure from private, package, benefit card or health plan is required',
       );
     }
 
@@ -382,6 +443,18 @@ export class ClinicalAppointmentsService {
             patientId: params.patientId,
             healthProfessionalId: params.healthProfessionalId,
             patientPackageItemIds: packageItemIds,
+            consumeNow: params.consumeNow,
+            excludeAppointmentId: params.excludeAppointmentId,
+          })
+        : [];
+
+    const benefitLines =
+      benefitUses.length > 0
+        ? await this.ensureBenefitUsesValid({
+            patientId: params.patientId,
+            healthProfessionalId: params.healthProfessionalId,
+            uses: benefitUses,
+            onYmd: params.onYmd,
             consumeNow: params.consumeNow,
             excludeAppointmentId: params.excludeAppointmentId,
           })
@@ -407,6 +480,11 @@ export class ClinicalAppointmentsService {
         origin: ClinicalAppointmentProcedureOrigin.package,
         patientPackageItemId: item.id,
       })),
+      ...benefitLines.map((item) => ({
+        procedureId: item.procedureId,
+        origin: ClinicalAppointmentProcedureOrigin.benefit,
+        benefitEntitlementId: item.entitlementId,
+      })),
       ...this.linesFromGuides(guides),
     ];
 
@@ -417,6 +495,7 @@ export class ClinicalAppointmentsService {
       type: this.deriveType(lines),
       insuranceGuideIds,
       packageItemIds,
+      benefitEntitlementIds: benefitLines.map((item) => item.entitlementId),
       guides,
     };
   }
@@ -428,7 +507,8 @@ export class ClinicalAppointmentsService {
     const hasPrivateOrPackage = lines.some(
       (line) =>
         line.origin === ClinicalAppointmentProcedureOrigin.private ||
-        line.origin === ClinicalAppointmentProcedureOrigin.package,
+        line.origin === ClinicalAppointmentProcedureOrigin.package ||
+        line.origin === ClinicalAppointmentProcedureOrigin.benefit,
     );
     if (hasPlan && hasPrivateOrPackage) {
       return ClinicalAppointmentType.mixed;
@@ -471,6 +551,7 @@ export class ClinicalAppointmentsService {
     status: ClinicalAppointmentStatus,
     guides: Array<{ id: number; procedures: Array<{ procedureId: number }> }>,
     packageItemIds: number[],
+    benefitEntitlementIds: number[] = [],
   ): string | null {
     if (status !== ClinicalAppointmentStatus.finished) {
       return null;
@@ -486,10 +567,13 @@ export class ClinicalAppointmentsService {
       .sort()
       .join('|');
     const packagePart = [...packageItemIds].sort((a, b) => a - b).join(',');
-    if (!guidePart && !packagePart) {
+    const benefitPart = [...benefitEntitlementIds]
+      .sort((a, b) => a - b)
+      .join(',');
+    if (!guidePart && !packagePart && !benefitPart) {
       return null;
     }
-    return `${guidePart}|pkg:${packagePart}`;
+    return `${guidePart}|pkg:${packagePart}|ben:${benefitPart}`;
   }
 
   private ensureValidInterval(scheduledAt: Date, endsAt: Date) {
@@ -606,6 +690,145 @@ export class ClinicalAppointmentsService {
       id: item.id,
       procedureId: item.procedureId,
     }));
+  }
+
+  private async ensureBenefitUsesValid(params: {
+    patientId: number;
+    healthProfessionalId: number;
+    uses: BenefitEntitlementUseDto[];
+    onYmd: string;
+    consumeNow: boolean;
+    excludeAppointmentId?: number;
+  }): Promise<BenefitEntitlementUseDto[]> {
+    const entitlementIds = [
+      ...new Set(params.uses.map((item) => item.entitlementId)),
+    ];
+    const entitlements = await this.prisma.benefitEntitlement.findMany({
+      where: { id: { in: entitlementIds } },
+      include: {
+        procedures: {
+          include: { procedure: { select: { id: true, specialtyId: true } } },
+        },
+        subscription: { include: { dependents: true } },
+      },
+    });
+    if (entitlements.length !== entitlementIds.length) {
+      const found = new Set(entitlements.map((item) => item.id));
+      const missing = entitlementIds.find((id) => !found.has(id));
+      throw new NotFoundException(`Benefit entitlement ${missing} not found`);
+    }
+
+    const byId = new Map(entitlements.map((item) => [item.id, item]));
+    const onDate = ymdToUtcDate(params.onYmd);
+    const proceduresForProfessional: Array<{
+      id: number;
+      specialtyId: number;
+    }> = [];
+
+    for (const use of params.uses) {
+      const entitlement = byId.get(use.entitlementId);
+      if (!entitlement) {
+        throw new NotFoundException(
+          `Benefit entitlement ${use.entitlementId} not found`,
+        );
+      }
+      if (entitlement.kind !== BenefitKind.quota) {
+        throw new BadRequestException(
+          `Benefit entitlement ${entitlement.id} is not a quota`,
+        );
+      }
+      const covered = entitlement.procedures.find(
+        (item) => item.procedureId === use.procedureId,
+      );
+      if (!covered) {
+        throw new BadRequestException(
+          `Procedure ${use.procedureId} is not covered by benefit entitlement ${entitlement.id}`,
+        );
+      }
+      const subscription = entitlement.subscription;
+      const isMember =
+        subscription.patientId === params.patientId ||
+        subscription.dependents.some(
+          (item) => item.patientId === params.patientId,
+        );
+      const current =
+        subscription.status === BenefitSubscriptionStatus.active &&
+        subscription.startsAt <= onDate &&
+        subscription.expiresAt >= onDate;
+      if (!isMember || !current) {
+        throw new BadRequestException(
+          `Benefit entitlement ${entitlement.id} is not available for patient ${params.patientId}`,
+        );
+      }
+      proceduresForProfessional.push(covered.procedure);
+    }
+
+    await this.ensureProceduresMatchProfessional(
+      params.healthProfessionalId,
+      proceduresForProfessional,
+    );
+
+    const reservedById = await this.reservedBenefitQuantities(
+      entitlementIds,
+      params.excludeAppointmentId,
+    );
+    const requested = new Map<number, number>();
+    for (const use of params.uses) {
+      requested.set(
+        use.entitlementId,
+        (requested.get(use.entitlementId) ?? 0) + 1,
+      );
+    }
+    for (const [entitlementId, count] of requested) {
+      const entitlement = byId.get(entitlementId);
+      if (!entitlement || entitlement.quantity == null) {
+        throw new BadRequestException(
+          `Benefit entitlement ${entitlementId} has no quantity`,
+        );
+      }
+      const reserved = params.consumeNow
+        ? 0
+        : (reservedById.get(entitlementId) ?? 0);
+      const remaining =
+        entitlement.quantity - entitlement.usedQuantity - reserved;
+      if (count > remaining) {
+        throw new BadRequestException(
+          `Benefit entitlement ${entitlementId} has no remaining quantity`,
+        );
+      }
+    }
+
+    return params.uses;
+  }
+
+  private async reservedBenefitQuantities(
+    entitlementIds: number[],
+    excludeAppointmentId?: number,
+  ): Promise<Map<number, number>> {
+    const map = new Map<number, number>();
+    if (entitlementIds.length === 0) {
+      return map;
+    }
+    const grouped = await this.prisma.clinicalAppointmentProcedure.groupBy({
+      by: ['benefitEntitlementId'],
+      where: {
+        origin: ClinicalAppointmentProcedureOrigin.benefit,
+        benefitEntitlementId: { in: entitlementIds },
+        clinicalAppointment: {
+          status: { in: STATUSES_THAT_RESERVE },
+          ...(excludeAppointmentId !== undefined && {
+            id: { not: excludeAppointmentId },
+          }),
+        },
+      },
+      _count: { _all: true },
+    });
+    for (const row of grouped) {
+      if (row.benefitEntitlementId != null) {
+        map.set(row.benefitEntitlementId, row._count._all);
+      }
+    }
+    return map;
   }
 
   private async reservedPackageQuantities(
@@ -811,6 +1034,40 @@ export class ClinicalAppointmentsService {
     }
     for (const patientPackageId of packageIds) {
       await this.refreshPatientPackageStatus(tx, patientPackageId);
+    }
+  }
+
+  private async consumeBenefitEntitlements(
+    tx: Prisma.TransactionClient,
+    entitlementIds: number[],
+  ) {
+    for (const entitlementId of entitlementIds) {
+      const rows = await tx.$executeRaw`
+        UPDATE "benefit_entitlements"
+        SET "used_quantity" = "used_quantity" + 1
+        WHERE "id" = ${entitlementId}
+          AND "quantity" IS NOT NULL
+          AND "used_quantity" < "quantity"
+      `;
+      if (rows === 0) {
+        throw new BadRequestException(
+          `Benefit entitlement ${entitlementId} has no remaining quantity`,
+        );
+      }
+    }
+  }
+
+  private async releaseBenefitEntitlements(
+    tx: Prisma.TransactionClient,
+    entitlementIds: number[],
+  ) {
+    for (const entitlementId of entitlementIds) {
+      await tx.$executeRaw`
+        UPDATE "benefit_entitlements"
+        SET "used_quantity" = "used_quantity" - 1
+        WHERE "id" = ${entitlementId}
+          AND "used_quantity" > 0
+      `;
     }
   }
 

@@ -12,22 +12,27 @@ import {
   Prisma,
 } from '@prisma/client';
 import {
+  computeChargedAmount,
+  decimalToNumber,
+  MoneyError,
+  percentOfAmount,
+} from '../finance/money';
+import { PrismaService } from '../prisma/prisma.service';
+import { BenefitSubscriptionsService } from '../benefit-subscriptions/benefit-subscriptions.service';
+import { ymdToUtcDate } from '../benefit-subscriptions/installments';
+import {
   endOfDaySaoPaulo,
   startOfDaySaoPaulo,
+  todayYmdSaoPaulo,
 } from '../common/datetime/sao-paulo-day-bounds';
 import {
   buildListMeta,
   ListEnvelope,
 } from '../common/pagination/list-envelope';
 import {
-  computeChargedAmount,
-  decimalToNumber,
-  MoneyError,
-} from '../finance/money';
-import { PrismaService } from '../prisma/prisma.service';
-import {
   CreatePrivateFinancialEntryDto,
   ListFinancialEntriesQueryDto,
+  ReceiveBenefitInstallmentDto,
 } from './dto/financial-entry.dto';
 
 const financialEntryInclude = {
@@ -39,11 +44,17 @@ const financialEntryInclude = {
   patientPackage: {
     include: { patient: true, package: true },
   },
+  benefitSubscription: {
+    include: { patient: true, plan: true },
+  },
 } as const;
 
 @Injectable()
 export class FinancialEntriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly benefitSubscriptionsService: BenefitSubscriptionsService,
+  ) {}
 
   async createPrivateEntry(dto: CreatePrivateFinancialEntryDto) {
     const appointment = await this.prisma.clinicalAppointment.findUnique({
@@ -99,11 +110,21 @@ export class FinancialEntriesService {
       0,
     );
 
+    let discountAmount = dto.discountAmount;
+    if (discountAmount === undefined) {
+      const percent =
+        await this.benefitSubscriptionsService.currentDiscountPercent(
+          appointment.patientId,
+          todayYmdSaoPaulo(),
+        );
+      discountAmount = percent > 0 ? percentOfAmount(grossAmount, percent) : 0;
+    }
+
     let charged: ReturnType<typeof computeChargedAmount>;
     try {
       charged = computeChargedAmount({
         grossAmount,
-        discountAmount: dto.discountAmount,
+        discountAmount,
         surchargeAmount: dto.surchargeAmount,
       });
     } catch (error) {
@@ -134,11 +155,11 @@ export class FinancialEntriesService {
     });
   }
 
-  async findAll(
-    query: ListFinancialEntriesQueryDto,
-  ): Promise<
+  async findAll(query: ListFinancialEntriesQueryDto): Promise<
     ListEnvelope<
-      Prisma.FinancialEntryGetPayload<{ include: typeof financialEntryInclude }>,
+      Prisma.FinancialEntryGetPayload<{
+        include: typeof financialEntryInclude;
+      }>,
       { amount: number; receivedAmount: number }
     >
   > {
@@ -155,11 +176,42 @@ export class FinancialEntriesService {
             }),
           }
         : undefined;
+    const dueDate =
+      query.from !== undefined || query.to !== undefined
+        ? {
+            ...(query.from !== undefined && {
+              gte: ymdToUtcDate(query.from.slice(0, 10)),
+            }),
+            ...(query.to !== undefined && {
+              lte: ymdToUtcDate(query.to.slice(0, 10)),
+            }),
+          }
+        : undefined;
+
+    const dateFilter: Prisma.FinancialEntryWhereInput =
+      createdAt === undefined
+        ? {}
+        : query.type === FinancialEntryType.benefit_subscription
+          ? { dueDate }
+          : query.type !== undefined
+            ? { createdAt }
+            : {
+                OR: [
+                  {
+                    type: { not: FinancialEntryType.benefit_subscription },
+                    createdAt,
+                  },
+                  {
+                    type: FinancialEntryType.benefit_subscription,
+                    dueDate,
+                  },
+                ],
+              };
 
     const where: Prisma.FinancialEntryWhereInput = {
       ...(query.type !== undefined && { type: query.type }),
       ...(query.status !== undefined && { status: query.status }),
-      ...(createdAt !== undefined && { createdAt }),
+      ...dateFilter,
     };
 
     const [data, total, sums] = await Promise.all([
@@ -196,5 +248,32 @@ export class FinancialEntriesService {
       throw new NotFoundException(`Financial entry ${id} not found`);
     }
     return entry;
+  }
+
+  async receiveBenefitInstallment(
+    id: number,
+    dto: ReceiveBenefitInstallmentDto,
+  ) {
+    const entry = await this.findOne(id);
+    if (entry.type !== FinancialEntryType.benefit_subscription) {
+      throw new BadRequestException(
+        'Only benefit subscription entries can be received here',
+      );
+    }
+    if (entry.status !== FinancialEntryStatus.pending) {
+      throw new BadRequestException(`Financial entry ${id} is not pending`);
+    }
+
+    const paidAt = dto.paidAt ? new Date(dto.paidAt) : new Date();
+    return this.prisma.financialEntry.update({
+      where: { id },
+      data: {
+        status: FinancialEntryStatus.paid,
+        receivedAmount: entry.amount,
+        paymentMethod: dto.paymentMethod,
+        paidAt,
+      },
+      include: financialEntryInclude,
+    });
   }
 }

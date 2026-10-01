@@ -31,6 +31,14 @@ export function applyPercentDiscount(
   return centsToMoney(Math.round((unitCents * (100 - discountPercent)) / 100));
 }
 
+export function percentOfAmount(amount: number, percent: number): number {
+  if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+    throw new MoneyError('percent must be between 0 and 100');
+  }
+  const cents = moneyToCents(amount);
+  return centsToMoney(Math.round((cents * percent) / 100));
+}
+
 export function decimalToNumber(
   value: { toNumber(): number } | number | string,
 ): number {

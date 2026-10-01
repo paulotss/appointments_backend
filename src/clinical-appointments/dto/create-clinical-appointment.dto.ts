@@ -12,7 +12,22 @@ import {
   IsOptional,
   IsString,
   Min,
+  ValidateNested,
 } from 'class-validator';
+
+export class BenefitEntitlementUseDto {
+  @ApiProperty({ example: 1 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  entitlementId!: number;
+
+  @ApiProperty({ example: 4 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  procedureId!: number;
+}
 
 export class CreateClinicalAppointmentDto {
   @ApiProperty({ example: 1 })
@@ -73,7 +88,8 @@ export class CreateClinicalAppointmentDto {
   @ApiPropertyOptional({
     type: [Number],
     example: [10, 11],
-    description: 'Guias de plano. Os procedimentos da guia entram como health_plan.',
+    description:
+      'Guias de plano. Os procedimentos da guia entram como health_plan.',
   })
   @IsOptional()
   @IsArray()
@@ -105,4 +121,15 @@ export class CreateClinicalAppointmentDto {
   @IsInt({ each: true })
   @Min(1, { each: true })
   patientPackageItemIds?: number[];
+
+  @ApiPropertyOptional({
+    type: [BenefitEntitlementUseDto],
+    description:
+      'Cotas do cartão. Cada uso consome 1 saldo e não entra na cobrança particular.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BenefitEntitlementUseDto)
+  benefitUses?: BenefitEntitlementUseDto[];
 }
