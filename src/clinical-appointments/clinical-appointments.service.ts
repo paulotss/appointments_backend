@@ -17,6 +17,7 @@ import {
   startOfDaySaoPaulo,
   todayYmdSaoPaulo,
 } from '../common/datetime/sao-paulo-day-bounds';
+import { HealthProfessionalsService } from '../health-professionals/health-professionals.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ymdToUtcDate } from '../benefit-subscriptions/installments';
 import {
@@ -81,7 +82,10 @@ type ProcedureLine = {
 
 @Injectable()
 export class ClinicalAppointmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly healthProfessionalsService: HealthProfessionalsService,
+  ) {}
 
   async create(createDto: CreateClinicalAppointmentDto) {
     await this.ensurePatientExists(createDto.patientId);
@@ -91,6 +95,11 @@ export class ClinicalAppointmentsService {
     const scheduledAt = new Date(createDto.scheduledAt);
     const endsAt = new Date(createDto.endsAt);
     this.ensureValidInterval(scheduledAt, endsAt);
+    await this.healthProfessionalsService.assertSlotAvailable(
+      createDto.healthProfessionalId,
+      scheduledAt,
+      endsAt,
+    );
 
     const resolved = await this.resolveProcedureLines({
       patientId: createDto.patientId,
@@ -211,6 +220,17 @@ export class ClinicalAppointmentsService {
         ? new Date(updateDto.endsAt)
         : existing.endsAt;
     this.ensureValidInterval(nextScheduledAt, nextEndsAt);
+    const slotChanged =
+      nextProfessionalId !== existing.healthProfessionalId ||
+      nextScheduledAt.getTime() !== existing.scheduledAt.getTime() ||
+      nextEndsAt.getTime() !== existing.endsAt.getTime();
+    if (slotChanged) {
+      await this.healthProfessionalsService.assertSlotAvailable(
+        nextProfessionalId,
+        nextScheduledAt,
+        nextEndsAt,
+      );
+    }
 
     if (updateDto.patientId !== undefined) {
       await this.ensurePatientExists(updateDto.patientId);

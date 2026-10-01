@@ -88,6 +88,13 @@ enum ClinicalAppointmentProcedureOrigin {
   @@map("clinical_appointment_procedure_origin_enum")
 }
 
+enum ScheduleExceptionKind {
+  block
+  release
+
+  @@map("schedule_exception_kind_enum")
+}
+
 enum BenefitKind {
   quota    @map("cota")
   discount @map("desconto")
@@ -201,11 +208,39 @@ model HealthProfessional {
   isActive      Boolean     @default(true) @map("is_active")
   registeredAt  DateTime    @default(now()) @map("registered_at") @db.Date
   specialties           HealthProfessionalSpecialty[]
+  weeklyBlocks          ProfessionalWeeklyBlock[]
+  dayExceptions         ProfessionalDayException[]
   stockExits            StockExit[]
   insuranceGuides       InsuranceGuide[]
   clinicalAppointments  ClinicalAppointment[]
 
   @@map("health_professionals")
+}
+
+model ProfessionalWeeklyBlock {
+  id                   Int                @id @default(autoincrement())
+  healthProfessionalId Int                @map("health_professional_id")
+  weekday              Int
+  startMinute          Int                @map("start_minute")
+  endMinute            Int                @map("end_minute")
+  healthProfessional   HealthProfessional @relation(fields: [healthProfessionalId], references: [id], onDelete: Cascade)
+
+  @@index([healthProfessionalId, weekday])
+  @@map("professional_weekly_blocks")
+}
+
+model ProfessionalDayException {
+  id                   Int                   @id @default(autoincrement())
+  healthProfessionalId Int                   @map("health_professional_id")
+  date                 DateTime              @db.Date
+  kind                 ScheduleExceptionKind
+  startMinute          Int                   @map("start_minute")
+  endMinute            Int                   @map("end_minute")
+  note                 String?               @db.VarChar(200)
+  healthProfessional   HealthProfessional    @relation(fields: [healthProfessionalId], references: [id], onDelete: Cascade)
+
+  @@index([healthProfessionalId, date])
+  @@map("professional_day_exceptions")
 }
 
 model HealthProfessionalSpecialty {
