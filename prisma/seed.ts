@@ -504,6 +504,9 @@ async function main() {
   const prisma = new PrismaClient({ adapter });
 
   try {
+    await prisma.clinicalEvolution.deleteMany();
+    await prisma.patientClinicalChart.deleteMany();
+    await prisma.patientFile.deleteMany();
     await prisma.financialEntryItem.deleteMany();
     await prisma.financialEntry.deleteMany();
     await prisma.billingBatchGuide.deleteMany();
@@ -656,6 +659,17 @@ async function main() {
             { specialtyId: cardiology.id },
           ],
         },
+      },
+    });
+
+    await prisma.user.create({
+      data: {
+        name: 'DR. CARLOS MENDES',
+        usernameLogin: 'carlos',
+        email: 'carlos.mendes@appointments.local',
+        passwordHash: userPasswordHash,
+        role: UserRole.PROFESSIONAL,
+        healthProfessionalId: cardiologist.id,
       },
     });
 

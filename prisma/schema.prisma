@@ -20,6 +20,21 @@ enum UserRole {
   @@map("user_role")
 }
 
+enum PatientFileKind {
+  MEDICAL_ORDER
+  PRESCRIPTION
+  OTHER
+
+  @@map("patient_file_kind")
+}
+
+enum PatientFileOrigin {
+  UPLOAD
+  GENERATED
+
+  @@map("patient_file_origin")
+}
+
 enum ServiceTokenScope {
   CALLS_WRITE
   AGENT_DATA_READ
@@ -229,6 +244,7 @@ model HealthProfessional {
   stockExits            StockExit[]
   insuranceGuides       InsuranceGuide[]
   clinicalAppointments  ClinicalAppointment[]
+  clinicalEvolutions    ClinicalEvolution[]
   userAccount           User?
 
   @@map("health_professionals")
@@ -301,6 +317,9 @@ model Patient {
   benefitSubscriptions BenefitSubscription[]         @relation("BenefitHolder")
   benefitDependents    BenefitSubscriptionDependent[]
   userAccount          User?
+  files                PatientFile[]
+  clinicalChart        PatientClinicalChart?
+  clinicalEvolutions   ClinicalEvolution[]
 
   @@map("patients")
 }
@@ -427,6 +446,7 @@ model ClinicalAppointment {
   insuranceGuides      ClinicalAppointmentGuide[]
   procedures           ClinicalAppointmentProcedure[]
   financialEntry       FinancialEntry?
+  clinicalEvolutions   ClinicalEvolution[]
 
   @@index([patientId])
   @@index([healthProfessionalId])
@@ -435,6 +455,68 @@ model ClinicalAppointment {
   @@index([status])
   @@index([type])
   @@map("clinical_appointments")
+}
+
+model PatientFile {
+  id              Int               @id @default(autoincrement())
+  patientId       Int               @map("patient_id")
+  kind            PatientFileKind
+  origin          PatientFileOrigin
+  title           String?           @db.VarChar(200)
+  originalName    String?           @map("original_name") @db.VarChar(255)
+  storageKey      String?           @map("storage_key") @db.VarChar(500)
+  mimeType        String?           @map("mime_type") @db.VarChar(100)
+  sizeBytes       Int?              @map("size_bytes")
+  content         Json?
+  createdByUserId Int               @map("created_by_user_id")
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamp(3)
+  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamp(3)
+  patient         Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  createdBy       User              @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([patientId])
+  @@index([createdByUserId])
+  @@map("patient_files")
+}
+
+model PatientClinicalChart {
+  id                 Int      @id @default(autoincrement())
+  patientId          Int      @unique @map("patient_id")
+  allergies          String?  @db.Text
+  chronicConditions  String?  @map("chronic_conditions") @db.Text
+  currentMedications String?  @map("current_medications") @db.Text
+  personalHistory    String?  @map("personal_history") @db.Text
+  familyHistory      String?  @map("family_history") @db.Text
+  habits             String?  @db.Text
+  updatedByUserId    Int?     @map("updated_by_user_id")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamp(3)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamp(3)
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  updatedBy          User?    @relation(fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@map("patient_clinical_charts")
+}
+
+model ClinicalEvolution {
+  id                    Int                 @id @default(autoincrement())
+  patientId             Int                 @map("patient_id")
+  healthProfessionalId  Int                 @map("health_professional_id")
+  clinicalAppointmentId Int?                @map("clinical_appointment_id")
+  occurredAt            DateTime            @map("occurred_at") @db.Timestamp(3)
+  subjective            String              @db.Text
+  objective             String              @db.Text
+  assessment            String              @db.Text
+  plan                  String              @db.Text
+  createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamp(3)
+  updatedAt             DateTime            @updatedAt @map("updated_at") @db.Timestamp(3)
+  patient               Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  healthProfessional    HealthProfessional  @relation(fields: [healthProfessionalId], references: [id], onDelete: Restrict)
+  clinicalAppointment   ClinicalAppointment? @relation(fields: [clinicalAppointmentId], references: [id], onDelete: SetNull)
+
+  @@index([patientId])
+  @@index([healthProfessionalId])
+  @@index([clinicalAppointmentId])
+  @@map("clinical_evolutions")
 }
 
 model ClinicalAppointmentGuide {
@@ -547,6 +629,8 @@ model User {
   stockBatches             StockBatch[]
   stockExits               StockExit[]
   serviceAccessTokens      ServiceAccessToken[]
+  patientFiles             PatientFile[]
+  updatedClinicalCharts    PatientClinicalChart[]
 
   @@map("users")
 }

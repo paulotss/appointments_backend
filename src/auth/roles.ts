@@ -15,6 +15,8 @@ export const CLINICAL_STAFF_ROLES = [
   UserRole.ADMIN,
 ] as const;
 
+export const PROFESSIONAL_ROLES = [UserRole.PROFESSIONAL] as const;
+
 export const AGENDA_ROLES = [
   UserRole.PATIENT,
   UserRole.PROFESSIONAL,

@@ -35,8 +35,18 @@ export class FileStorageService implements OnModuleInit {
     await this.ensureBucket();
   }
 
-  async savePayableFile(payableId: number, file: UploadedFile): Promise<string> {
+  async savePayableFile(
+    payableId: number,
+    file: UploadedFile,
+  ): Promise<string> {
     return this.put(`payables/${payableId}/${this.objectName(file)}`, file);
+  }
+
+  async savePatientFile(
+    patientId: number,
+    file: UploadedFile,
+  ): Promise<string> {
+    return this.put(`patients/${patientId}/${this.objectName(file)}`, file);
   }
 
   async saveGuideFile(guideId: number, file: UploadedFile): Promise<string> {
