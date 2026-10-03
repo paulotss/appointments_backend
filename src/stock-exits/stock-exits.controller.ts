@@ -9,11 +9,15 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CLINICAL_STAFF_ROLES } from '../auth/roles';
+
 import { CreateStockExitDto } from './dto/create-stock-exit.dto';
 import { UpdateStockExitDto } from './dto/update-stock-exit.dto';
 import { StockExitsService } from './stock-exits.service';
 
 @ApiTags('stock-exits')
+@Roles(...CLINICAL_STAFF_ROLES)
 @Controller('stock-exits')
 export class StockExitsController {
   constructor(private readonly stockExitsService: StockExitsService) {}

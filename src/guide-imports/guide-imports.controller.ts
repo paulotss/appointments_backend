@@ -3,7 +3,6 @@ import {
   Controller,
   Post,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -14,8 +13,10 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { STAFF_ROLES } from '../auth/roles';
+
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import type { UploadedFile as UploadedFilePayload } from '../uploads/uploaded-file';
 import { CommitGuideImportDto } from './dto/commit-guide-import.dto';
@@ -23,6 +24,7 @@ import { MatchGuideImportDto } from './dto/extracted-guide.dto';
 import { GuideImportsService } from './guide-imports.service';
 
 @ApiTags('guide-imports')
+@Roles(...STAFF_ROLES)
 @Controller('guide-imports')
 export class GuideImportsController {
   constructor(private readonly guideImportsService: GuideImportsService) {}
@@ -61,7 +63,6 @@ export class GuideImportsController {
   }
 
   @Post('commit')
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT')
   @ApiOperation({
     summary: 'Confirmar importacao da guia',

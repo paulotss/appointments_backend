@@ -10,12 +10,16 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { STAFF_ROLES } from '../auth/roles';
+
 import { CreateProcedurePackageDto } from './dto/create-procedure-package.dto';
 import { ListProcedurePackagesQueryDto } from './dto/list-procedure-packages-query.dto';
 import { UpdateProcedurePackageDto } from './dto/update-procedure-package.dto';
 import { ProcedurePackagesService } from './procedure-packages.service';
 
 @ApiTags('procedure-packages')
+@Roles(...STAFF_ROLES)
 @Controller('procedure-packages')
 export class ProcedurePackagesController {
   constructor(

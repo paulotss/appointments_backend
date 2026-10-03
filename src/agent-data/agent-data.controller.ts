@@ -4,7 +4,6 @@ import {
   Param,
   ParseIntPipe,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -12,7 +11,11 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ServiceTokenScope } from '@prisma/client';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { ServiceScopes } from '../auth/decorators/service-scopes.decorator';
+import { STAFF_ROLES } from '../auth/roles';
+
 import { AgentDataService } from './agent-data.service';
 import {
   ListBillingBatchesAgentQueryDto,
@@ -34,7 +37,8 @@ import {
 
 @ApiTags('agent-data')
 @ApiBearerAuth('JWT')
-@UseGuards(JwtAuthGuard)
+@Roles(...STAFF_ROLES)
+@ServiceScopes(ServiceTokenScope.AGENT_DATA_READ)
 @Controller('agent-data')
 export class AgentDataController {
   constructor(private readonly agentDataService: AgentDataService) {}

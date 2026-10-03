@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { CallRecordStatus } from '@prisma/client';
+import { CallRecordStatus, UserRole } from '@prisma/client';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
 import { MessagesService } from './messages.service';
@@ -18,14 +18,18 @@ describe('MessagesService.findAll', () => {
   const admin: JwtPayload = {
     sub: 1,
     usernameLogin: 'admin',
-    isAdmin: true,
+    role: UserRole.ADMIN,
+    patientId: null,
+    healthProfessionalId: null,
     jti: 'j1',
   };
 
   const attendant: JwtPayload = {
     sub: 10,
     usernameLogin: 'attendant',
-    isAdmin: false,
+    role: UserRole.RECEPTIONIST,
+    patientId: null,
+    healthProfessionalId: null,
     jti: 'j2',
   };
 

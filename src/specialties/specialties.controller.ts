@@ -9,11 +9,15 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CLINICAL_STAFF_ROLES, STAFF_ROLES } from '../auth/roles';
+
 import { CreateSpecialtyDto } from './dto/create-specialty.dto';
 import { UpdateSpecialtyDto } from './dto/update-specialty.dto';
 import { SpecialtiesService } from './specialties.service';
 
 @ApiTags('specialties')
+@Roles(...STAFF_ROLES)
 @Controller('specialties')
 export class SpecialtiesController {
   constructor(private readonly specialtiesService: SpecialtiesService) {}
@@ -24,12 +28,14 @@ export class SpecialtiesController {
     return this.specialtiesService.create(createSpecialtyDto);
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get()
   @ApiOperation({ summary: 'Listar especialidades' })
   findAll() {
     return this.specialtiesService.findAll();
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get(':id')
   @ApiOperation({ summary: 'Buscar especialidade por id' })
   @ApiParam({ name: 'id', example: 1 })

@@ -8,11 +8,15 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CLINICAL_STAFF_ROLES, STAFF_ROLES } from '../auth/roles';
+
 import { CreatePatientPackageDto } from './dto/create-patient-package.dto';
 import { ListPatientPackagesQueryDto } from './dto/list-patient-packages-query.dto';
 import { PatientPackagesService } from './patient-packages.service';
 
 @ApiTags('patient-packages')
+@Roles(...STAFF_ROLES)
 @Controller('patient-packages')
 export class PatientPackagesController {
   constructor(private readonly patientPackagesService: PatientPackagesService) {}
@@ -27,6 +31,7 @@ export class PatientPackagesController {
     return this.patientPackagesService.create(dto);
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get()
   @ApiOperation({
     summary: 'Listar pacotes atribuidos a um paciente',
@@ -37,6 +42,7 @@ export class PatientPackagesController {
     return this.patientPackagesService.findAll(query);
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get(':id')
   @ApiOperation({ summary: 'Buscar pacote atribuido por id' })
   @ApiParam({ name: 'id', example: 1 })

@@ -10,12 +10,16 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CLINICAL_STAFF_ROLES, STAFF_ROLES } from '../auth/roles';
+
 import { CreateProcedureDto } from './dto/create-procedure.dto';
 import { ListProceduresQueryDto } from './dto/list-procedures-query.dto';
 import { UpdateProcedureDto } from './dto/update-procedure.dto';
 import { ProceduresService } from './procedures.service';
 
 @ApiTags('procedures')
+@Roles(...STAFF_ROLES)
 @Controller('procedures')
 export class ProceduresController {
   constructor(private readonly proceduresService: ProceduresService) {}
@@ -26,6 +30,7 @@ export class ProceduresController {
     return this.proceduresService.create(createProcedureDto);
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get()
   @ApiOperation({
     summary: 'Listar procedimentos',
@@ -36,6 +41,7 @@ export class ProceduresController {
     return this.proceduresService.findAll(query);
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get(':id')
   @ApiOperation({ summary: 'Buscar procedimento por id' })
   @ApiParam({ name: 'id', example: 1 })

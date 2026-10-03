@@ -11,6 +11,22 @@ datasource db {
   provider = "postgresql"
 }
 
+enum UserRole {
+  PATIENT
+  PROFESSIONAL
+  RECEPTIONIST
+  ADMIN
+
+  @@map("user_role")
+}
+
+enum ServiceTokenScope {
+  CALLS_WRITE
+  AGENT_DATA_READ
+
+  @@map("service_token_scope")
+}
+
 enum ContactMethod {
   whatsapp
   phone
@@ -213,6 +229,7 @@ model HealthProfessional {
   stockExits            StockExit[]
   insuranceGuides       InsuranceGuide[]
   clinicalAppointments  ClinicalAppointment[]
+  userAccount           User?
 
   @@map("health_professionals")
 }
@@ -283,6 +300,7 @@ model Patient {
   packages             PatientPackage[]
   benefitSubscriptions BenefitSubscription[]         @relation("BenefitHolder")
   benefitDependents    BenefitSubscriptionDependent[]
+  userAccount          User?
 
   @@map("patients")
 }
@@ -512,20 +530,41 @@ model PatientPackageItem {
 }
 
 model User {
-  id                       Int           @id @default(autoincrement())
-  name                     String        @db.VarChar(150)
-  passwordHash             String        @map("password_hash") @db.VarChar(255)
-  usernameLogin            String        @unique @map("username_login") @db.VarChar(100)
-  email                    String?       @unique @map("email") @db.VarChar(150)
-  isAdmin                  Boolean       @default(false) @map("is_admin")
-  extension                Int?          @unique @map("extension")
-  attendedAppointments     Appointment[] @relation("AttendantAppointments")
+  id                       Int                  @id @default(autoincrement())
+  name                     String               @db.VarChar(150)
+  passwordHash             String               @map("password_hash") @db.VarChar(255)
+  usernameLogin            String               @unique @map("username_login") @db.VarChar(100)
+  email                    String?              @unique @map("email") @db.VarChar(150)
+  role                     UserRole             @default(RECEPTIONIST)
+  patientId                Int?                 @unique @map("patient_id")
+  healthProfessionalId     Int?                 @unique @map("health_professional_id")
+  extension                Int?                 @unique @map("extension")
+  patient                  Patient?             @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  healthProfessional       HealthProfessional?  @relation(fields: [healthProfessionalId], references: [id], onDelete: SetNull)
+  attendedAppointments     Appointment[]        @relation("AttendantAppointments")
   calls                    Call[]
   messages                 Message[]
   stockBatches             StockBatch[]
   stockExits               StockExit[]
+  serviceAccessTokens      ServiceAccessToken[]
 
   @@map("users")
+}
+
+model ServiceAccessToken {
+  id          Int                 @id @default(autoincrement())
+  name        String              @db.VarChar(150)
+  tokenHash   String              @unique @map("token_hash") @db.VarChar(64)
+  jti         String              @unique @db.VarChar(64)
+  scopes      ServiceTokenScope[]
+  expiresAt   DateTime?           @map("expires_at") @db.Timestamp(3)
+  revokedAt   DateTime?           @map("revoked_at") @db.Timestamp(3)
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamp(3)
+  createdById Int                 @map("created_by_id")
+  createdBy   User                @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([createdById])
+  @@map("service_access_tokens")
 }
 
 model Call {

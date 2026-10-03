@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
 import { GuideImportsService } from './guide-imports.service';
 
 describe('GuideImportsService commit', () => {
@@ -62,7 +63,7 @@ describe('GuideImportsService commit', () => {
         procedures: [{ procedureId: 9, authorizedQuantity: 8, usedQuantity: 8 }],
         patient: { mode: 'existing', patientId: 3 },
       },
-      { isAdmin: true },
+      { role: UserRole.ADMIN },
     );
 
     expect(insuranceGuidesService.create).toHaveBeenCalledWith(
@@ -71,7 +72,7 @@ describe('GuideImportsService commit', () => {
         procedures: [{ procedureId: 9, authorizedQuantity: 8, usedQuantity: 8 }],
       }),
       tx,
-      { isAdmin: true },
+      { role: UserRole.ADMIN },
     );
   });
 

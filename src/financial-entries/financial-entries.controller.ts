@@ -8,6 +8,9 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { STAFF_ROLES } from '../auth/roles';
+
 import {
   CreatePrivateFinancialEntryDto,
   ListFinancialEntriesQueryDto,
@@ -16,6 +19,7 @@ import {
 import { FinancialEntriesService } from './financial-entries.service';
 
 @ApiTags('financial-entries')
+@Roles(...STAFF_ROLES)
 @Controller('financial-entries')
 export class FinancialEntriesController {
   constructor(

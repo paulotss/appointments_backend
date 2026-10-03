@@ -9,11 +9,15 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { STAFF_ROLES } from '../auth/roles';
+
 import { CreateSectorDto } from './dto/create-sector.dto';
 import { UpdateSectorDto } from './dto/update-sector.dto';
 import { SectorsService } from './sectors.service';
 
 @ApiTags('sectors')
+@Roles(...STAFF_ROLES)
 @Controller('sectors')
 export class SectorsController {
   constructor(private readonly sectorsService: SectorsService) {}

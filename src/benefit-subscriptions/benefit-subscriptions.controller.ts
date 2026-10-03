@@ -9,6 +9,9 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CLINICAL_STAFF_ROLES, STAFF_ROLES } from '../auth/roles';
+
 import { BenefitSubscriptionsService } from './benefit-subscriptions.service';
 import { AddBenefitDependentDto } from './dto/add-benefit-dependent.dto';
 import { CreateBenefitNoteDto } from './dto/create-benefit-note.dto';
@@ -16,6 +19,7 @@ import { CreateBenefitSubscriptionDto } from './dto/create-benefit-subscription.
 import { ListBenefitSubscriptionsQueryDto } from './dto/list-benefit-subscriptions-query.dto';
 
 @ApiTags('benefit-subscriptions')
+@Roles(...STAFF_ROLES)
 @Controller('benefit-subscriptions')
 export class BenefitSubscriptionsController {
   constructor(
@@ -32,6 +36,7 @@ export class BenefitSubscriptionsController {
     return this.benefitSubscriptionsService.create(dto);
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get()
   @ApiOperation({
     summary: 'Listar adesões de um paciente',
@@ -42,6 +47,7 @@ export class BenefitSubscriptionsController {
     return this.benefitSubscriptionsService.findAll(query);
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get(':id')
   @ApiOperation({ summary: 'Buscar adesão por id' })
   @ApiParam({ name: 'id', example: 1 })

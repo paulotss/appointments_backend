@@ -11,6 +11,9 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { STAFF_ROLES } from '../auth/roles';
+
 import { TissExportService } from '../tiss-export/tiss-export.service';
 import { BillingBatchesService } from './billing-batches.service';
 import {
@@ -21,6 +24,7 @@ import {
 } from './dto/billing-batch.dto';
 
 @ApiTags('billing-batches')
+@Roles(...STAFF_ROLES)
 @Controller('billing-batches')
 export class BillingBatchesController {
   constructor(

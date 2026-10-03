@@ -20,6 +20,9 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { STAFF_ROLES } from '../auth/roles';
+
 import {
   CreatePayableDto,
   ListPayablesQueryDto,
@@ -30,6 +33,7 @@ import { PayablesService } from './payables.service';
 import type { UploadedFile as UploadedFilePayload } from '../uploads/uploaded-file';
 
 @ApiTags('payables')
+@Roles(...STAFF_ROLES)
 @Controller('payables')
 export class PayablesController {
   constructor(private readonly payablesService: PayablesService) {}

@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { UserRole } from '@prisma/client';
 
 export class StockBatchProductSummaryDto {
   @ApiProperty({ example: 1 })
@@ -64,8 +65,8 @@ export class StockBatchUserSummaryDto {
   @ApiProperty({ example: 'maria.silva' })
   usernameLogin!: string;
 
-  @ApiProperty({ example: false })
-  isAdmin!: boolean;
+  @ApiProperty({ enum: UserRole, example: UserRole.RECEPTIONIST })
+  role!: UserRole;
 
   @ApiPropertyOptional({ example: 2001, nullable: true })
   extension?: number | null;

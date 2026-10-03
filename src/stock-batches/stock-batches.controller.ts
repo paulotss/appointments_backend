@@ -17,6 +17,9 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CLINICAL_STAFF_ROLES, STAFF_ROLES } from '../auth/roles';
+
 import { CreateStockBatchDto } from './dto/create-stock-batch.dto';
 import { StockBatchResponseDto } from './dto/stock-batch-response.dto';
 import { UpdateStockBatchDto } from './dto/update-stock-batch.dto';
@@ -24,6 +27,7 @@ import { StockBatchListStatus } from './stock-batch-list-status.enum';
 import { StockBatchesService } from './stock-batches.service';
 
 @ApiTags('stock-batches')
+@Roles(...STAFF_ROLES)
 @Controller('stock-batches')
 export class StockBatchesController {
   constructor(private readonly stockBatchesService: StockBatchesService) {}
@@ -38,6 +42,7 @@ export class StockBatchesController {
     return this.stockBatchesService.create(createStockBatchDto);
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get()
   @ApiOperation({
     summary: 'Listar lotes de estoque',
@@ -64,6 +69,7 @@ export class StockBatchesController {
     );
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get(':id')
   @ApiOperation({ summary: 'Buscar lote de estoque por id' })
   @ApiParam({ name: 'id', example: 1 })

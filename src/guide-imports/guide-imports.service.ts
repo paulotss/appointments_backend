@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { Prisma, InsuranceGuideStatus } from '@prisma/client';
+import { InsuranceGuideStatus, Prisma, UserRole } from '@prisma/client';
 import { normalizeName } from '../common/normalize-name';
 import { InsuranceGuidesService } from '../insurance-guides/insurance-guides.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -55,7 +55,7 @@ export class GuideImportsService {
 
   async commit(
     dto: CommitGuideImportDto,
-    currentUser?: { isAdmin: boolean },
+    currentUser?: { role: UserRole },
   ) {
     await this.assertPlanProfessionalAndProceduresExist(dto);
 

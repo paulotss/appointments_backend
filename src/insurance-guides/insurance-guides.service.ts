@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, TissGuideType } from '@prisma/client';
+import { Prisma, TissGuideType, UserRole } from '@prisma/client';
 import {
   buildListMeta,
   ListEnvelope,
@@ -51,7 +51,7 @@ export class InsuranceGuidesService {
   async create(
     createInsuranceGuideDto: CreateInsuranceGuideDto,
     tx?: Prisma.TransactionClient,
-    currentUser?: { isAdmin: boolean },
+    currentUser?: { role: UserRole },
   ) {
     this.assertManualUsedQuantity(
       createInsuranceGuideDto.procedures,
@@ -369,10 +369,10 @@ export class InsuranceGuidesService {
 
   private assertManualUsedQuantity(
     procedures: InsuranceGuideProcedureInputDto[],
-    currentUser?: { isAdmin: boolean },
+    currentUser?: { role: UserRole },
   ) {
     const usesQuantity = procedures.some((item) => (item.usedQuantity ?? 0) > 0);
-    if (usesQuantity && !currentUser?.isAdmin) {
+    if (usesQuantity && currentUser?.role !== UserRole.ADMIN) {
       throw new ForbiddenException(
         'Only admins can set used quantity without an appointment',
       );

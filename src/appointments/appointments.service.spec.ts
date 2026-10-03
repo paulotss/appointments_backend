@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
-import { ContactMethod } from '@prisma/client';
+import { ContactMethod, UserRole } from '@prisma/client';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { AppointmentsService } from './appointments.service';
 import { ListAppointmentsQueryDto } from './dto/list-appointments-query.dto';
@@ -18,14 +18,18 @@ describe('AppointmentsService.findAll', () => {
   const admin: JwtPayload = {
     sub: 1,
     usernameLogin: 'admin',
-    isAdmin: true,
+    role: UserRole.ADMIN,
+    patientId: null,
+    healthProfessionalId: null,
     jti: 'j1',
   };
 
   const attendant: JwtPayload = {
     sub: 10,
     usernameLogin: 'attendant',
-    isAdmin: false,
+    role: UserRole.RECEPTIONIST,
+    patientId: null,
+    healthProfessionalId: null,
     jti: 'j2',
   };
 
@@ -165,7 +169,9 @@ describe('AppointmentsService.exportAll', () => {
   const admin: JwtPayload = {
     sub: 1,
     usernameLogin: 'admin',
-    isAdmin: true,
+    role: UserRole.ADMIN,
+    patientId: null,
+    healthProfessionalId: null,
     jti: 'j1',
   };
 

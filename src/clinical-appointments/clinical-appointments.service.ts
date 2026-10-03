@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -11,7 +12,9 @@ import {
   ClinicalAppointmentType,
   PatientPackageStatus,
   Prisma,
+  UserRole,
 } from '@prisma/client';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import {
   endOfDaySaoPaulo,
   startOfDaySaoPaulo,
@@ -87,7 +90,60 @@ export class ClinicalAppointmentsService {
     private readonly healthProfessionalsService: HealthProfessionalsService,
   ) {}
 
-  async create(createDto: CreateClinicalAppointmentDto) {
+  private scopeListQuery(
+    query: ListClinicalAppointmentsQueryDto,
+    user: JwtPayload,
+  ): ListClinicalAppointmentsQueryDto {
+    if (user.role === UserRole.PATIENT) {
+      return { ...query, patientId: this.requirePatientId(user) };
+    }
+    if (user.role === UserRole.PROFESSIONAL) {
+      return {
+        ...query,
+        healthProfessionalId: this.requireProfessionalId(user),
+      };
+    }
+    return query;
+  }
+
+  private assertVisible(
+    appointment: { patientId: number; healthProfessionalId: number },
+    user: JwtPayload,
+  ) {
+    if (
+      user.role === UserRole.PATIENT &&
+      appointment.patientId !== this.requirePatientId(user)
+    ) {
+      throw new NotFoundException(
+        `Clinical appointment not found`,
+      );
+    }
+    if (
+      user.role === UserRole.PROFESSIONAL &&
+      appointment.healthProfessionalId !== this.requireProfessionalId(user)
+    ) {
+      throw new NotFoundException(`Clinical appointment not found`);
+    }
+  }
+
+  private requirePatientId(user: JwtPayload): number {
+    if (user.patientId == null) {
+      throw new ForbiddenException('Patient link is required');
+    }
+    return user.patientId;
+  }
+
+  private requireProfessionalId(user: JwtPayload): number {
+    if (user.healthProfessionalId == null) {
+      throw new ForbiddenException('Professional link is required');
+    }
+    return user.healthProfessionalId;
+  }
+
+  async create(createDto: CreateClinicalAppointmentDto, user: JwtPayload) {
+    if (user.role === UserRole.PROFESSIONAL) {
+      createDto.healthProfessionalId = this.requireProfessionalId(user);
+    }
     await this.ensurePatientExists(createDto.patientId);
     await this.ensureHealthProfessionalExists(createDto.healthProfessionalId);
 
@@ -156,7 +212,8 @@ export class ClinicalAppointmentsService {
     });
   }
 
-  findAll(query: ListClinicalAppointmentsQueryDto) {
+  findAll(query: ListClinicalAppointmentsQueryDto, user: JwtPayload) {
+    const scoped = this.scopeListQuery(query, user);
     const scheduledAtFilter =
       query.from !== undefined || query.to !== undefined
         ? {
@@ -171,15 +228,15 @@ export class ClinicalAppointmentsService {
 
     return this.prisma.clinicalAppointment.findMany({
       where: {
-        ...(query.patientId !== undefined && { patientId: query.patientId }),
-        ...(query.healthProfessionalId !== undefined && {
-          healthProfessionalId: query.healthProfessionalId,
+        ...(scoped.patientId !== undefined && { patientId: scoped.patientId }),
+        ...(scoped.healthProfessionalId !== undefined && {
+          healthProfessionalId: scoped.healthProfessionalId,
         }),
-        ...(query.status !== undefined && { status: query.status }),
-        ...(query.type !== undefined && { type: query.type }),
-        ...(query.insuranceGuideId !== undefined && {
+        ...(scoped.status !== undefined && { status: scoped.status }),
+        ...(scoped.type !== undefined && { type: scoped.type }),
+        ...(scoped.insuranceGuideId !== undefined && {
           insuranceGuides: {
-            some: { insuranceGuideId: query.insuranceGuideId },
+            some: { insuranceGuideId: scoped.insuranceGuideId },
           },
         }),
         ...(scheduledAtFilter !== undefined && {
@@ -191,7 +248,7 @@ export class ClinicalAppointmentsService {
     });
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, user?: JwtPayload) {
     const appointment = await this.prisma.clinicalAppointment.findUnique({
       where: { id },
       include: appointmentInclude,
@@ -201,15 +258,25 @@ export class ClinicalAppointmentsService {
       throw new NotFoundException(`Clinical appointment ${id} not found`);
     }
 
+    if (user) {
+      this.assertVisible(appointment, user);
+    }
+
     return appointment;
   }
 
-  async update(id: number, updateDto: UpdateClinicalAppointmentDto) {
-    const existing = await this.findOne(id);
+  async update(
+    id: number,
+    updateDto: UpdateClinicalAppointmentDto,
+    user: JwtPayload,
+  ) {
+    const existing = await this.findOne(id, user);
 
     const nextPatientId = updateDto.patientId ?? existing.patientId;
     const nextProfessionalId =
-      updateDto.healthProfessionalId ?? existing.healthProfessionalId;
+      user.role === UserRole.PROFESSIONAL
+        ? this.requireProfessionalId(user)
+        : (updateDto.healthProfessionalId ?? existing.healthProfessionalId);
     const nextStatus = updateDto.status ?? existing.status;
     const nextScheduledAt =
       updateDto.scheduledAt !== undefined
@@ -375,8 +442,8 @@ export class ClinicalAppointmentsService {
     });
   }
 
-  async remove(id: number) {
-    const existing = await this.findOne(id);
+  async remove(id: number, user: JwtPayload) {
+    const existing = await this.findOne(id, user);
     const packageItemIds = existing.procedures
       .filter(
         (item) =>

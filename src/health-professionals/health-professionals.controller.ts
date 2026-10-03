@@ -11,6 +11,9 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CLINICAL_STAFF_ROLES } from '../auth/roles';
+
 import { CreateHealthProfessionalDto } from './dto/create-health-professional.dto';
 import { ListHealthProfessionalsQueryDto } from './dto/list-health-professionals-query.dto';
 import { ReplaceScheduleExceptionsDto } from './dto/replace-schedule-exceptions.dto';
@@ -19,6 +22,7 @@ import { UpdateHealthProfessionalDto } from './dto/update-health-professional.dt
 import { HealthProfessionalsService } from './health-professionals.service';
 
 @ApiTags('health-professionals')
+@Roles(...CLINICAL_STAFF_ROLES)
 @Controller('health-professionals')
 export class HealthProfessionalsController {
   constructor(

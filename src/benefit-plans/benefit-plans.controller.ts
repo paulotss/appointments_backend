@@ -10,12 +10,16 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { STAFF_ROLES } from '../auth/roles';
+
 import { BenefitPlansService } from './benefit-plans.service';
 import { CreateBenefitPlanDto } from './dto/create-benefit-plan.dto';
 import { ListBenefitPlansQueryDto } from './dto/list-benefit-plans-query.dto';
 import { UpdateBenefitPlanDto } from './dto/update-benefit-plan.dto';
 
 @ApiTags('benefit-plans')
+@Roles(...STAFF_ROLES)
 @Controller('benefit-plans')
 export class BenefitPlansController {
   constructor(private readonly benefitPlansService: BenefitPlansService) {}

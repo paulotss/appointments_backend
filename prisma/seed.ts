@@ -10,6 +10,7 @@ import {
   InsuranceGuideStatus,
   PrismaClient,
   TissGuideType,
+  UserRole,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { Pool } from 'pg';
@@ -525,6 +526,7 @@ async function main() {
     await prisma.appointment.deleteMany();
     await prisma.message.deleteMany();
     await prisma.call.deleteMany();
+    await prisma.serviceAccessToken.deleteMany();
     await prisma.healthProfessional.deleteMany();
     await prisma.healthPlanProcedure.deleteMany();
     await prisma.procedure.deleteMany();
@@ -543,14 +545,14 @@ async function main() {
           usernameLogin: 'admin',
           email: 'admin@appointments.local',
           passwordHash: adminPasswordHash,
-          isAdmin: true,
+          role: UserRole.ADMIN,
         },
         {
           name: 'Atendente',
           usernameLogin: 'atendente',
           email: 'atendente@appointments.local',
           passwordHash: userPasswordHash,
-          isAdmin: false,
+          role: UserRole.RECEPTIONIST,
         },
       ],
     });

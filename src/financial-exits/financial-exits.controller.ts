@@ -1,9 +1,13 @@
 import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { STAFF_ROLES } from '../auth/roles';
+
 import { ListFinancialExitsQueryDto } from './dto/list-financial-exits-query.dto';
 import { FinancialExitsService } from './financial-exits.service';
 
 @ApiTags('financial-exits')
+@Roles(...STAFF_ROLES)
 @Controller('financial-exits')
 export class FinancialExitsController {
   constructor(private readonly financialExitsService: FinancialExitsService) {}

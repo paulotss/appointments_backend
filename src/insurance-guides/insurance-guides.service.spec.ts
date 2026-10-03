@@ -4,7 +4,7 @@ import {
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import { InsuranceGuidesService } from './insurance-guides.service';
 
 function uniqueConstraintError(): Prisma.PrismaClientKnownRequestError {
@@ -217,7 +217,7 @@ describe('InsuranceGuidesService manual used quantity', () => {
         procedures: [{ procedureId: 9, authorizedQuantity: 10, usedQuantity: 4 }],
       },
       undefined,
-      { isAdmin: true },
+      { role: UserRole.ADMIN },
     );
 
     expect(prisma.insuranceGuide.create).toHaveBeenCalledWith(
@@ -259,7 +259,7 @@ describe('InsuranceGuidesService manual used quantity', () => {
           procedures: [{ procedureId: 9, authorizedQuantity: 2, usedQuantity: 5 }],
         },
         undefined,
-        { isAdmin: true },
+        { role: UserRole.ADMIN },
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.insuranceGuide.create).not.toHaveBeenCalled();
