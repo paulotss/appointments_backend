@@ -7,7 +7,6 @@ import {
   Patch,
   Post,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -15,8 +14,12 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import { ServiceTokenScope } from '@prisma/client';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { ServiceScopes } from '../auth/decorators/service-scopes.decorator';
+import { STAFF_ROLES } from '../auth/roles';
+
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CallsService } from './calls.service';
 import { CreateCallDto } from './dto/create-call.dto';
@@ -24,18 +27,19 @@ import { ListCallsQueryDto } from './dto/list-calls-query.dto';
 import { UpdateCallDto } from './dto/update-call.dto';
 
 @ApiTags('calls')
+@Roles(...STAFF_ROLES)
 @Controller('calls')
 export class CallsController {
   constructor(private readonly callsService: CallsService) {}
 
   @Post()
+  @ServiceScopes(ServiceTokenScope.CALLS_WRITE)
   @ApiOperation({ summary: 'Registrar ligação' })
   create(@Body() createCallDto: CreateCallDto) {
     return this.callsService.create(createCallDto);
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT')
   @ApiOperation({
     summary: 'Listar ligações (filtrado, paginado, com counts)',

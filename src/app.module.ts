@@ -3,11 +3,14 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { AuthModule } from './auth/auth.module';
+import { BenefitPlansModule } from './benefit-plans/benefit-plans.module';
+import { BenefitSubscriptionsModule } from './benefit-subscriptions/benefit-subscriptions.module';
 import { BillingBatchesModule } from './billing-batches/billing-batches.module';
 import { CallsModule } from './calls/calls.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ClinicProfileModule } from './clinic-profile/clinic-profile.module';
 import { ClinicalAppointmentsModule } from './clinical-appointments/clinical-appointments.module';
+import { ClinicalRecordsModule } from './clinical-records/clinical-records.module';
 import { FinancialEntriesModule } from './financial-entries/financial-entries.module';
 import { FinancialExitsModule } from './financial-exits/financial-exits.module';
 import { GuideImportsModule } from './guide-imports/guide-imports.module';
@@ -18,10 +21,13 @@ import { InsuranceCardsModule } from './insurance-cards/insurance-cards.module';
 import { InsuranceGuidesModule } from './insurance-guides/insurance-guides.module';
 import { MessagesModule } from './messages/messages.module';
 import { AgentDataModule } from './agent-data/agent-data.module';
+import { PatientFilesModule } from './patient-files/patient-files.module';
+import { PatientPackagesModule } from './patient-packages/patient-packages.module';
 import { PatientsModule } from './patients/patients.module';
 import { PayablesModule } from './payables/payables.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProceduresModule } from './procedures/procedures.module';
+import { ProcedurePackagesModule } from './procedure-packages/procedure-packages.module';
 import { ProductsModule } from './products/products.module';
 import { SectorsModule } from './sectors/sectors.module';
 import { SpecialtiesModule } from './specialties/specialties.module';
@@ -39,6 +45,11 @@ import { UsersModule } from './users/users.module';
     HealthProfessionalsModule,
     HealthPlansModule,
     PatientsModule,
+    PatientPackagesModule,
+    PatientFilesModule,
+    ProcedurePackagesModule,
+    BenefitPlansModule,
+    BenefitSubscriptionsModule,
     AgentDataModule,
     HigiaModule,
     InsuranceCardsModule,
@@ -46,6 +57,7 @@ import { UsersModule } from './users/users.module';
     GuideImportsModule,
     ProceduresModule,
     ClinicalAppointmentsModule,
+    ClinicalRecordsModule,
     AppointmentsModule,
     CallsModule,
     MessagesModule,

@@ -5,7 +5,6 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  ArrayMinSize,
   IsArray,
   IsDateString,
   IsEnum,
@@ -13,7 +12,22 @@ import {
   IsOptional,
   IsString,
   Min,
+  ValidateNested,
 } from 'class-validator';
+
+export class BenefitEntitlementUseDto {
+  @ApiProperty({ example: 1 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  entitlementId!: number;
+
+  @ApiProperty({ example: 4 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  procedureId!: number;
+}
 
 export class CreateClinicalAppointmentDto {
   @ApiProperty({ example: 1 })
@@ -42,13 +56,15 @@ export class CreateClinicalAppointmentDto {
   @IsDateString()
   endsAt!: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     enum: ClinicalAppointmentType,
     example: ClinicalAppointmentType.private,
-    description: 'private (particular) ou health_plan (plano de saude)',
+    description:
+      'Ignorado: o tipo e derivado das origens (avulso, pacote e/ou plano).',
   })
+  @IsOptional()
   @IsEnum(ClinicalAppointmentType)
-  type!: ClinicalAppointmentType;
+  type?: ClinicalAppointmentType;
 
   @ApiPropertyOptional({
     enum: ClinicalAppointmentStatus,
@@ -73,11 +89,10 @@ export class CreateClinicalAppointmentDto {
     type: [Number],
     example: [10, 11],
     description:
-      'Obrigatorio quando type = health_plan (minimo 1). Nao enviar no particular.',
+      'Guias de plano. Os procedimentos da guia entram como health_plan.',
   })
   @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @Type(() => Number)
   @IsInt({ each: true })
   @Min(1, { each: true })
@@ -86,14 +101,35 @@ export class CreateClinicalAppointmentDto {
   @ApiPropertyOptional({
     type: [Number],
     example: [1, 2],
-    description:
-      'Obrigatorio quando type = private. Nao enviar no plano de saude.',
+    description: 'Procedimentos particulares avulsos (preco cheio).',
   })
   @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @Type(() => Number)
   @IsInt({ each: true })
   @Min(1, { each: true })
   procedureIds?: number[];
+
+  @ApiPropertyOptional({
+    type: [Number],
+    example: [5, 6],
+    description: 'Itens de pacote do paciente (consome saldo, ja pagos).',
+  })
+  @IsOptional()
+  @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  patientPackageItemIds?: number[];
+
+  @ApiPropertyOptional({
+    type: [BenefitEntitlementUseDto],
+    description:
+      'Cotas do cartão. Cada uso consome 1 saldo e não entra na cobrança particular.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BenefitEntitlementUseDto)
+  benefitUses?: BenefitEntitlementUseDto[];
 }

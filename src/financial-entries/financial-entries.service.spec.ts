@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import {
+  ClinicalAppointmentProcedureOrigin,
   ClinicalAppointmentStatus,
   ClinicalAppointmentType,
   FinancialEntryStatus,
@@ -14,7 +15,13 @@ describe('FinancialEntriesService.createPrivateEntry', () => {
     clinicalAppointment: { findUnique: jest.fn() },
     financialEntry: { create: jest.fn() },
   };
-  const service = new FinancialEntriesService(prisma as never);
+  const benefitSubscriptions = {
+    currentDiscountPercent: jest.fn().mockResolvedValue(0),
+  };
+  const service = new FinancialEntriesService(
+    prisma as never,
+    benefitSubscriptions as never,
+  );
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -53,6 +60,7 @@ describe('FinancialEntriesService.createPrivateEntry', () => {
       procedures: [
         {
           procedureId: 3,
+          origin: ClinicalAppointmentProcedureOrigin.private,
           procedure: { id: 3, name: 'Consulta', specialtyId: 1, value: 150 },
         },
       ],
@@ -83,6 +91,47 @@ describe('FinancialEntriesService.createPrivateEntry', () => {
     expect(Number(data.surchargeAmount)).toBe(5);
     expect(Number(data.amount)).toBe(135);
     expect(Number(data.receivedAmount)).toBe(135);
+    expect(data.items.create).toEqual([
+      {
+        procedureId: 3,
+        quantity: 1,
+        unitValue: 150,
+        description: 'Consulta',
+      },
+    ]);
+  });
+
+  it('bills only private origin lines on mixed appointments', async () => {
+    prisma.clinicalAppointment.findUnique.mockResolvedValue({
+      id: 9,
+      type: ClinicalAppointmentType.mixed,
+      status: ClinicalAppointmentStatus.finished,
+      financialEntry: null,
+      procedures: [
+        {
+          procedureId: 3,
+          origin: ClinicalAppointmentProcedureOrigin.private,
+          procedure: { id: 3, name: 'Consulta', specialtyId: 1, value: 150 },
+        },
+        {
+          procedureId: 4,
+          origin: ClinicalAppointmentProcedureOrigin.package,
+          procedure: { id: 4, name: 'Sessao', specialtyId: 1, value: 80 },
+        },
+      ],
+    });
+    prisma.financialEntry.create.mockResolvedValue({ id: 2 });
+
+    await service.createPrivateEntry({
+      clinicalAppointmentId: 9,
+      paymentMethod: PaymentMethod.pix,
+    });
+
+    const data = prisma.financialEntry.create.mock.calls[0][0].data as {
+      grossAmount: number;
+      items: { create: Array<{ procedureId: number }> };
+    };
+    expect(Number(data.grossAmount)).toBe(150);
     expect(data.items.create).toEqual([
       {
         procedureId: 3,

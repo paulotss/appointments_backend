@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import {
   CallRecordStatus,
+  ClinicalAppointmentProcedureOrigin,
   ClinicalAppointmentStatus,
   ClinicalAppointmentType,
   ContactMethod,
@@ -9,6 +10,7 @@ import {
   InsuranceGuideStatus,
   PrismaClient,
   TissGuideType,
+  UserRole,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { Pool } from 'pg';
@@ -453,7 +455,10 @@ async function seedClinicalAppointmentsForCurrentWeek(
               },
             },
             procedures: {
-              create: { procedureId },
+              create: {
+                procedureId,
+                origin: ClinicalAppointmentProcedureOrigin.health_plan,
+              },
             },
           },
         });
@@ -469,7 +474,10 @@ async function seedClinicalAppointmentsForCurrentWeek(
             type,
             notes,
             procedures: {
-              create: { procedureId },
+              create: {
+                procedureId,
+                origin: ClinicalAppointmentProcedureOrigin.private,
+              },
             },
           },
         });
@@ -496,6 +504,9 @@ async function main() {
   const prisma = new PrismaClient({ adapter });
 
   try {
+    await prisma.clinicalEvolution.deleteMany();
+    await prisma.patientClinicalChart.deleteMany();
+    await prisma.patientFile.deleteMany();
     await prisma.financialEntryItem.deleteMany();
     await prisma.financialEntry.deleteMany();
     await prisma.billingBatchGuide.deleteMany();
@@ -518,6 +529,7 @@ async function main() {
     await prisma.appointment.deleteMany();
     await prisma.message.deleteMany();
     await prisma.call.deleteMany();
+    await prisma.serviceAccessToken.deleteMany();
     await prisma.healthProfessional.deleteMany();
     await prisma.healthPlanProcedure.deleteMany();
     await prisma.procedure.deleteMany();
@@ -536,14 +548,14 @@ async function main() {
           usernameLogin: 'admin',
           email: 'admin@appointments.local',
           passwordHash: adminPasswordHash,
-          isAdmin: true,
+          role: UserRole.ADMIN,
         },
         {
           name: 'Atendente',
           usernameLogin: 'atendente',
           email: 'atendente@appointments.local',
           passwordHash: userPasswordHash,
-          isAdmin: false,
+          role: UserRole.RECEPTIONIST,
         },
       ],
     });
@@ -647,6 +659,17 @@ async function main() {
             { specialtyId: cardiology.id },
           ],
         },
+      },
+    });
+
+    await prisma.user.create({
+      data: {
+        name: 'DR. CARLOS MENDES',
+        usernameLogin: 'carlos',
+        email: 'carlos.mendes@appointments.local',
+        passwordHash: userPasswordHash,
+        role: UserRole.PROFESSIONAL,
+        healthProfessionalId: cardiologist.id,
       },
     });
 

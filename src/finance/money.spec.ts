@@ -1,4 +1,5 @@
 import {
+  applyPercentDiscount,
   computeChargedAmount,
   computeGuideBilledAmountCents,
   entryStatusFromReceived,
@@ -35,6 +36,19 @@ describe('computeChargedAmount', () => {
     expect(() =>
       computeChargedAmount({ grossAmount: 100, discountAmount: 120 }),
     ).toThrow(MoneyError);
+  });
+});
+
+describe('applyPercentDiscount', () => {
+  it('applies percent per unit in cents', () => {
+    expect(applyPercentDiscount(150, 10)).toBe(135);
+    expect(applyPercentDiscount(100, 0)).toBe(100);
+    expect(applyPercentDiscount(80.5, 10)).toBe(72.45);
+  });
+
+  it('rejects percent outside 0-100', () => {
+    expect(() => applyPercentDiscount(100, -1)).toThrow(MoneyError);
+    expect(() => applyPercentDiscount(100, 101)).toThrow(MoneyError);
   });
 });
 

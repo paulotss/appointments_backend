@@ -5,7 +5,6 @@ import {
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  ArrayMinSize,
   IsArray,
   IsDateString,
   IsEnum,
@@ -13,7 +12,9 @@ import {
   IsOptional,
   IsString,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { BenefitEntitlementUseDto } from './create-clinical-appointment.dto';
 
 export class UpdateClinicalAppointmentDto {
   @ApiPropertyOptional({ example: 1 })
@@ -49,6 +50,7 @@ export class UpdateClinicalAppointmentDto {
   @ApiPropertyOptional({
     enum: ClinicalAppointmentType,
     example: ClinicalAppointmentType.health_plan,
+    description: 'Ignorado: o tipo e derivado das origens.',
   })
   @IsOptional()
   @IsEnum(ClinicalAppointmentType)
@@ -75,11 +77,10 @@ export class UpdateClinicalAppointmentDto {
     type: [Number],
     example: [10, 11],
     description:
-      'Obrigatorio quando type = health_plan (minimo 1). Nao enviar no particular.',
+      'Substitui as guias. Omita para manter. Envie [] para remover.',
   })
   @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @Type(() => Number)
   @IsInt({ each: true })
   @Min(1, { each: true })
@@ -88,14 +89,36 @@ export class UpdateClinicalAppointmentDto {
   @ApiPropertyOptional({
     type: [Number],
     example: [1, 2],
-    description:
-      'Usado quando type = private. Ignorado/proibido no plano de saude.',
+    description: 'Substitui avulsos. Omita para manter. Envie [] para remover.',
   })
   @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @Type(() => Number)
   @IsInt({ each: true })
   @Min(1, { each: true })
   procedureIds?: number[];
+
+  @ApiPropertyOptional({
+    type: [Number],
+    example: [5, 6],
+    description:
+      'Substitui itens de pacote. Omita para manter. Envie [] para remover.',
+  })
+  @IsOptional()
+  @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  patientPackageItemIds?: number[];
+
+  @ApiPropertyOptional({
+    type: [BenefitEntitlementUseDto],
+    description:
+      'Substitui cotas do cartão. Omita para manter. Envie [] para remover.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BenefitEntitlementUseDto)
+  benefitUses?: BenefitEntitlementUseDto[];
 }

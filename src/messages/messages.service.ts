@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { CallRecordStatus, Prisma } from '@prisma/client';
+import { CallRecordStatus, Prisma, UserRole } from '@prisma/client';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import {
   endOfDaySaoPaulo,
@@ -189,7 +189,7 @@ export class MessagesService {
     currentUser: JwtPayload,
     requestedUserId?: number,
   ): Prisma.MessageWhereInput {
-    if (currentUser.isAdmin) {
+    if (currentUser.role === UserRole.ADMIN) {
       if (requestedUserId !== undefined) {
         return { userId: requestedUserId };
       }
@@ -201,7 +201,7 @@ export class MessagesService {
       requestedUserId !== currentUser.sub
     ) {
       throw new ForbiddenException(
-        'Non-admin users cannot filter messages by another userId',
+        'Only administrators can filter messages by another userId',
       );
     }
 

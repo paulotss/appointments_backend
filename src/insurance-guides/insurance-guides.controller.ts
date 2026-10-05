@@ -10,7 +10,6 @@ import {
   Query,
   StreamableFile,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -22,8 +21,10 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CLINICAL_STAFF_ROLES, STAFF_ROLES } from '../auth/roles';
+
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { BillingBatchesService } from '../billing-batches/billing-batches.service';
 import type { UploadedFile as UploadedFilePayload } from '../uploads/uploaded-file';
@@ -33,6 +34,7 @@ import { UpdateInsuranceGuideDto } from './dto/update-insurance-guide.dto';
 import { InsuranceGuidesService } from './insurance-guides.service';
 
 @ApiTags('insurance-guides')
+@Roles(...STAFF_ROLES)
 @Controller('insurance-guides')
 export class InsuranceGuidesController {
   constructor(
@@ -41,7 +43,6 @@ export class InsuranceGuidesController {
   ) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT')
   @ApiOperation({
     summary: 'Criar guia de plano de saude',
@@ -59,6 +60,7 @@ export class InsuranceGuidesController {
     );
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get()
   @ApiOperation({
     summary: 'Listar guias de plano de saude',
@@ -69,6 +71,7 @@ export class InsuranceGuidesController {
     return this.insuranceGuidesService.findAll(query);
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get(':id')
   @ApiOperation({ summary: 'Buscar guia por id' })
   @ApiParam({ name: 'id', example: 1 })

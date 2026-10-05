@@ -1,21 +1,41 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import {
+  BenefitKind,
+  BenefitSubscriptionStatus,
+  ClinicalAppointmentProcedureOrigin,
   ClinicalAppointmentStatus,
   ClinicalAppointmentType,
+  PatientPackageStatus,
   Prisma,
+  UserRole,
 } from '@prisma/client';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import {
   endOfDaySaoPaulo,
   startOfDaySaoPaulo,
+  todayYmdSaoPaulo,
 } from '../common/datetime/sao-paulo-day-bounds';
+import { HealthProfessionalsService } from '../health-professionals/health-professionals.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateClinicalAppointmentDto } from './dto/create-clinical-appointment.dto';
+import { ymdToUtcDate } from '../benefit-subscriptions/installments';
+import {
+  BenefitEntitlementUseDto,
+  CreateClinicalAppointmentDto,
+} from './dto/create-clinical-appointment.dto';
 import { ListClinicalAppointmentsQueryDto } from './dto/list-clinical-appointments-query.dto';
 import { UpdateClinicalAppointmentDto } from './dto/update-clinical-appointment.dto';
+
+const STATUSES_THAT_RESERVE: ClinicalAppointmentStatus[] = [
+  ClinicalAppointmentStatus.marked,
+  ClinicalAppointmentStatus.confirmed,
+  ClinicalAppointmentStatus.waiting,
+  ClinicalAppointmentStatus.attended,
+];
 
 const appointmentInclude = {
   patient: true,
@@ -32,7 +52,18 @@ const appointmentInclude = {
       },
     },
   },
-  procedures: { include: { procedure: true } },
+  procedures: {
+    include: {
+      procedure: true,
+      patientPackageItem: {
+        include: { patientPackage: { include: { package: true } } },
+      },
+      benefitEntitlement: {
+        include: { subscription: { include: { plan: true } } },
+      },
+      insuranceGuide: true,
+    },
+  },
 } as const;
 
 const guideForAppointmentInclude = {
@@ -44,11 +75,75 @@ type GuideForAppointment = Prisma.InsuranceGuideGetPayload<{
   include: typeof guideForAppointmentInclude;
 }>;
 
+type ProcedureLine = {
+  procedureId: number;
+  origin: ClinicalAppointmentProcedureOrigin;
+  patientPackageItemId?: number;
+  insuranceGuideId?: number;
+  benefitEntitlementId?: number;
+};
+
 @Injectable()
 export class ClinicalAppointmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly healthProfessionalsService: HealthProfessionalsService,
+  ) {}
 
-  async create(createDto: CreateClinicalAppointmentDto) {
+  private scopeListQuery(
+    query: ListClinicalAppointmentsQueryDto,
+    user: JwtPayload,
+  ): ListClinicalAppointmentsQueryDto {
+    if (user.role === UserRole.PATIENT) {
+      return { ...query, patientId: this.requirePatientId(user) };
+    }
+    if (user.role === UserRole.PROFESSIONAL) {
+      return {
+        ...query,
+        healthProfessionalId: this.requireProfessionalId(user),
+      };
+    }
+    return query;
+  }
+
+  private assertVisible(
+    appointment: { patientId: number; healthProfessionalId: number },
+    user: JwtPayload,
+  ) {
+    if (
+      user.role === UserRole.PATIENT &&
+      appointment.patientId !== this.requirePatientId(user)
+    ) {
+      throw new NotFoundException(
+        `Clinical appointment not found`,
+      );
+    }
+    if (
+      user.role === UserRole.PROFESSIONAL &&
+      appointment.healthProfessionalId !== this.requireProfessionalId(user)
+    ) {
+      throw new NotFoundException(`Clinical appointment not found`);
+    }
+  }
+
+  private requirePatientId(user: JwtPayload): number {
+    if (user.patientId == null) {
+      throw new ForbiddenException('Patient link is required');
+    }
+    return user.patientId;
+  }
+
+  private requireProfessionalId(user: JwtPayload): number {
+    if (user.healthProfessionalId == null) {
+      throw new ForbiddenException('Professional link is required');
+    }
+    return user.healthProfessionalId;
+  }
+
+  async create(createDto: CreateClinicalAppointmentDto, user: JwtPayload) {
+    if (user.role === UserRole.PROFESSIONAL) {
+      createDto.healthProfessionalId = this.requireProfessionalId(user);
+    }
     await this.ensurePatientExists(createDto.patientId);
     await this.ensureHealthProfessionalExists(createDto.healthProfessionalId);
 
@@ -56,57 +151,22 @@ export class ClinicalAppointmentsService {
     const scheduledAt = new Date(createDto.scheduledAt);
     const endsAt = new Date(createDto.endsAt);
     this.ensureValidInterval(scheduledAt, endsAt);
-
-    if (createDto.type === ClinicalAppointmentType.private) {
-      if (createDto.insuranceGuideIds !== undefined) {
-        throw new BadRequestException(
-          'insuranceGuideIds must be omitted when type is private',
-        );
-      }
-
-      const procedureIds = this.uniqueIds(
-        createDto.procedureIds,
-        'procedureIds is required when type is private',
-      );
-      await this.ensurePrivateProceduresValid(
-        createDto.healthProfessionalId,
-        procedureIds,
-      );
-
-      return this.prisma.clinicalAppointment.create({
-        data: {
-          patientId: createDto.patientId,
-          healthProfessionalId: createDto.healthProfessionalId,
-          scheduledAt,
-          endsAt,
-          status,
-          type: ClinicalAppointmentType.private,
-          notes: createDto.notes,
-          procedures: {
-            create: procedureIds.map((procedureId) => ({ procedureId })),
-          },
-        },
-        include: appointmentInclude,
-      });
-    }
-
-    const insuranceGuideIds = this.uniqueIds(
-      createDto.insuranceGuideIds,
-      'insuranceGuideIds is required when type is health_plan',
+    await this.healthProfessionalsService.assertSlotAvailable(
+      createDto.healthProfessionalId,
+      scheduledAt,
+      endsAt,
     );
 
-    if (createDto.procedureIds !== undefined) {
-      throw new BadRequestException(
-        'procedureIds must be omitted when type is health_plan; procedures are copied from the insurance guides',
-      );
-    }
-
-    const guides = await this.loadAndValidateGuides({
-      insuranceGuideIds,
+    const resolved = await this.resolveProcedureLines({
       patientId: createDto.patientId,
       healthProfessionalId: createDto.healthProfessionalId,
+      procedureIds: createDto.procedureIds ?? [],
+      patientPackageItemIds: createDto.patientPackageItemIds ?? [],
+      insuranceGuideIds: createDto.insuranceGuideIds ?? [],
+      benefitUses: createDto.benefitUses ?? [],
+      onYmd: todayYmdSaoPaulo(scheduledAt),
+      consumeNow: status === ClinicalAppointmentStatus.finished,
     });
-    const procedureIds = this.procedureIdsFromGuides(guides);
 
     return this.prisma.$transaction(async (tx) => {
       const appointment = await tx.clinicalAppointment.create({
@@ -116,22 +176,33 @@ export class ClinicalAppointmentsService {
           scheduledAt,
           endsAt,
           status,
-          type: ClinicalAppointmentType.health_plan,
+          type: resolved.type,
           notes: createDto.notes,
           insuranceGuides: {
-            create: insuranceGuideIds.map((insuranceGuideId) => ({
+            create: resolved.insuranceGuideIds.map((insuranceGuideId) => ({
               insuranceGuideId,
             })),
           },
           procedures: {
-            create: procedureIds.map((procedureId) => ({ procedureId })),
+            create: resolved.lines.map((line) => ({
+              procedureId: line.procedureId,
+              origin: line.origin,
+              patientPackageItemId: line.patientPackageItemId,
+              insuranceGuideId: line.insuranceGuideId,
+              benefitEntitlementId: line.benefitEntitlementId,
+            })),
           },
         },
         include: appointmentInclude,
       });
 
       if (status === ClinicalAppointmentStatus.finished) {
-        await this.consumeGuides(tx, guides);
+        await this.consumeGuides(tx, resolved.guides);
+        await this.consumePackageItems(tx, resolved.packageItemIds);
+        await this.consumeBenefitEntitlements(
+          tx,
+          resolved.benefitEntitlementIds,
+        );
       }
 
       return tx.clinicalAppointment.findUniqueOrThrow({
@@ -141,7 +212,8 @@ export class ClinicalAppointmentsService {
     });
   }
 
-  findAll(query: ListClinicalAppointmentsQueryDto) {
+  findAll(query: ListClinicalAppointmentsQueryDto, user: JwtPayload) {
+    const scoped = this.scopeListQuery(query, user);
     const scheduledAtFilter =
       query.from !== undefined || query.to !== undefined
         ? {
@@ -156,15 +228,15 @@ export class ClinicalAppointmentsService {
 
     return this.prisma.clinicalAppointment.findMany({
       where: {
-        ...(query.patientId !== undefined && { patientId: query.patientId }),
-        ...(query.healthProfessionalId !== undefined && {
-          healthProfessionalId: query.healthProfessionalId,
+        ...(scoped.patientId !== undefined && { patientId: scoped.patientId }),
+        ...(scoped.healthProfessionalId !== undefined && {
+          healthProfessionalId: scoped.healthProfessionalId,
         }),
-        ...(query.status !== undefined && { status: query.status }),
-        ...(query.type !== undefined && { type: query.type }),
-        ...(query.insuranceGuideId !== undefined && {
+        ...(scoped.status !== undefined && { status: scoped.status }),
+        ...(scoped.type !== undefined && { type: scoped.type }),
+        ...(scoped.insuranceGuideId !== undefined && {
           insuranceGuides: {
-            some: { insuranceGuideId: query.insuranceGuideId },
+            some: { insuranceGuideId: scoped.insuranceGuideId },
           },
         }),
         ...(scheduledAtFilter !== undefined && {
@@ -176,7 +248,7 @@ export class ClinicalAppointmentsService {
     });
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, user?: JwtPayload) {
     const appointment = await this.prisma.clinicalAppointment.findUnique({
       where: { id },
       include: appointmentInclude,
@@ -186,16 +258,25 @@ export class ClinicalAppointmentsService {
       throw new NotFoundException(`Clinical appointment ${id} not found`);
     }
 
+    if (user) {
+      this.assertVisible(appointment, user);
+    }
+
     return appointment;
   }
 
-  async update(id: number, updateDto: UpdateClinicalAppointmentDto) {
-    const existing = await this.findOne(id);
+  async update(
+    id: number,
+    updateDto: UpdateClinicalAppointmentDto,
+    user: JwtPayload,
+  ) {
+    const existing = await this.findOne(id, user);
 
     const nextPatientId = updateDto.patientId ?? existing.patientId;
     const nextProfessionalId =
-      updateDto.healthProfessionalId ?? existing.healthProfessionalId;
-    const nextType = updateDto.type ?? existing.type;
+      user.role === UserRole.PROFESSIONAL
+        ? this.requireProfessionalId(user)
+        : (updateDto.healthProfessionalId ?? existing.healthProfessionalId);
     const nextStatus = updateDto.status ?? existing.status;
     const nextScheduledAt =
       updateDto.scheduledAt !== undefined
@@ -206,6 +287,17 @@ export class ClinicalAppointmentsService {
         ? new Date(updateDto.endsAt)
         : existing.endsAt;
     this.ensureValidInterval(nextScheduledAt, nextEndsAt);
+    const slotChanged =
+      nextProfessionalId !== existing.healthProfessionalId ||
+      nextScheduledAt.getTime() !== existing.scheduledAt.getTime() ||
+      nextEndsAt.getTime() !== existing.endsAt.getTime();
+    if (slotChanged) {
+      await this.healthProfessionalsService.assertSlotAvailable(
+        nextProfessionalId,
+        nextScheduledAt,
+        nextEndsAt,
+      );
+    }
 
     if (updateDto.patientId !== undefined) {
       await this.ensurePatientExists(updateDto.patientId);
@@ -215,66 +307,106 @@ export class ClinicalAppointmentsService {
       await this.ensureHealthProfessionalExists(updateDto.healthProfessionalId);
     }
 
+    const existingPrivateIds = existing.procedures
+      .filter(
+        (item) => item.origin === ClinicalAppointmentProcedureOrigin.private,
+      )
+      .map((item) => item.procedureId);
+    const existingPackageItemIds = existing.procedures
+      .filter(
+        (item) =>
+          item.origin === ClinicalAppointmentProcedureOrigin.package &&
+          item.patientPackageItemId != null,
+      )
+      .map((item) => item.patientPackageItemId as number);
     const existingGuideIds = existing.insuranceGuides.map(
       (item) => item.insuranceGuideId,
     );
-    const nextGuideIds = this.resolveNextGuideIds(
-      existingGuideIds,
-      updateDto,
-      nextType,
+    const existingBenefitUses = existing.procedures
+      .filter(
+        (item) =>
+          item.origin === ClinicalAppointmentProcedureOrigin.benefit &&
+          item.benefitEntitlementId != null,
+      )
+      .map((item) => ({
+        entitlementId: item.benefitEntitlementId as number,
+        procedureId: item.procedureId,
+      }));
+    const existingBenefitEntitlementIds = existingBenefitUses.map(
+      (item) => item.entitlementId,
     );
-    const nextGuides =
-      nextType === ClinicalAppointmentType.health_plan
-        ? await this.loadAndValidateGuides({
-            insuranceGuideIds: nextGuideIds,
-            patientId: nextPatientId,
-            healthProfessionalId: nextProfessionalId,
-            alreadyAssociatedIds: existingGuideIds,
-          })
-        : [];
 
-    const nextProcedureIds = await this.resolveNextProcedureIds({
-      existingType: existing.type,
-      existingGuideIds,
-      existingProcedureIds: existing.procedures.map((item) => item.procedureId),
-      nextType,
-      nextGuideIds,
-      nextGuides,
-      nextProfessionalId,
-      updateDto,
+    const resolved = await this.resolveProcedureLines({
+      patientId: nextPatientId,
+      healthProfessionalId: nextProfessionalId,
+      procedureIds:
+        updateDto.procedureIds !== undefined
+          ? updateDto.procedureIds
+          : existingPrivateIds,
+      patientPackageItemIds:
+        updateDto.patientPackageItemIds !== undefined
+          ? updateDto.patientPackageItemIds
+          : existingPackageItemIds,
+      insuranceGuideIds:
+        updateDto.insuranceGuideIds !== undefined
+          ? updateDto.insuranceGuideIds
+          : existingGuideIds,
+      benefitUses:
+        updateDto.benefitUses !== undefined
+          ? updateDto.benefitUses
+          : existingBenefitUses,
+      onYmd: todayYmdSaoPaulo(nextScheduledAt),
+      consumeNow: nextStatus === ClinicalAppointmentStatus.finished,
+      excludeAppointmentId: id,
+      alreadyAssociatedGuideIds: existingGuideIds,
     });
 
     const existingGuidesForConsume = existing.insuranceGuides.map(
       (item) => item.insuranceGuide,
     );
     const oldConsumeKey = this.consumeKey(
-      existing.type,
-      existingGuidesForConsume,
       existing.status,
+      existingGuidesForConsume,
+      existingPackageItemIds,
+      existingBenefitEntitlementIds,
     );
-    const nextConsumeKey = this.consumeKey(nextType, nextGuides, nextStatus);
+    const nextConsumeKey = this.consumeKey(
+      nextStatus,
+      resolved.guides,
+      resolved.packageItemIds,
+      resolved.benefitEntitlementIds,
+    );
 
     return this.prisma.$transaction(async (tx) => {
       if (oldConsumeKey && oldConsumeKey !== nextConsumeKey) {
         await this.releaseGuides(tx, existingGuidesForConsume);
+        await this.releasePackageItems(tx, existingPackageItemIds);
+        await this.releaseBenefitEntitlements(
+          tx,
+          existingBenefitEntitlementIds,
+        );
       }
 
       await tx.clinicalAppointmentProcedure.deleteMany({
         where: { clinicalAppointmentId: id },
       });
       await tx.clinicalAppointmentProcedure.createMany({
-        data: nextProcedureIds.map((procedureId) => ({
+        data: resolved.lines.map((line) => ({
           clinicalAppointmentId: id,
-          procedureId,
+          procedureId: line.procedureId,
+          origin: line.origin,
+          patientPackageItemId: line.patientPackageItemId,
+          insuranceGuideId: line.insuranceGuideId,
+          benefitEntitlementId: line.benefitEntitlementId,
         })),
       });
 
       await tx.clinicalAppointmentGuide.deleteMany({
         where: { clinicalAppointmentId: id },
       });
-      if (nextGuideIds.length > 0) {
+      if (resolved.insuranceGuideIds.length > 0) {
         await tx.clinicalAppointmentGuide.createMany({
-          data: nextGuideIds.map((insuranceGuideId) => ({
+          data: resolved.insuranceGuideIds.map((insuranceGuideId) => ({
             clinicalAppointmentId: id,
             insuranceGuideId,
           })),
@@ -289,13 +421,18 @@ export class ClinicalAppointmentsService {
           scheduledAt: nextScheduledAt,
           endsAt: nextEndsAt,
           status: nextStatus,
-          type: nextType,
+          type: resolved.type,
           ...(updateDto.notes !== undefined && { notes: updateDto.notes }),
         },
       });
 
       if (nextConsumeKey && oldConsumeKey !== nextConsumeKey) {
-        await this.consumeGuides(tx, nextGuides);
+        await this.consumeGuides(tx, resolved.guides);
+        await this.consumePackageItems(tx, resolved.packageItemIds);
+        await this.consumeBenefitEntitlements(
+          tx,
+          resolved.benefitEntitlementIds,
+        );
       }
 
       return tx.clinicalAppointment.findUniqueOrThrow({
@@ -305,20 +442,37 @@ export class ClinicalAppointmentsService {
     });
   }
 
-  async remove(id: number) {
-    const existing = await this.findOne(id);
+  async remove(id: number, user: JwtPayload) {
+    const existing = await this.findOne(id, user);
+    const packageItemIds = existing.procedures
+      .filter(
+        (item) =>
+          item.origin === ClinicalAppointmentProcedureOrigin.package &&
+          item.patientPackageItemId != null,
+      )
+      .map((item) => item.patientPackageItemId as number);
+    const benefitEntitlementIds = existing.procedures
+      .filter(
+        (item) =>
+          item.origin === ClinicalAppointmentProcedureOrigin.benefit &&
+          item.benefitEntitlementId != null,
+      )
+      .map((item) => item.benefitEntitlementId as number);
 
     return this.prisma.$transaction(async (tx) => {
       const key = this.consumeKey(
-        existing.type,
-        existing.insuranceGuides.map((item) => item.insuranceGuide),
         existing.status,
+        existing.insuranceGuides.map((item) => item.insuranceGuide),
+        packageItemIds,
+        benefitEntitlementIds,
       );
       if (key) {
         await this.releaseGuides(
           tx,
           existing.insuranceGuides.map((item) => item.insuranceGuide),
         );
+        await this.releasePackageItems(tx, packageItemIds);
+        await this.releaseBenefitEntitlements(tx, benefitEntitlementIds);
       }
 
       return tx.clinicalAppointment.delete({
@@ -328,109 +482,169 @@ export class ClinicalAppointmentsService {
     });
   }
 
-  private resolveNextGuideIds(
-    existingGuideIds: number[],
-    updateDto: UpdateClinicalAppointmentDto,
-    nextType: ClinicalAppointmentType,
-  ): number[] {
-    if (nextType === ClinicalAppointmentType.private) {
-      if (updateDto.insuranceGuideIds !== undefined) {
-        throw new BadRequestException(
-          'insuranceGuideIds must be omitted when type is private',
-        );
-      }
-      return [];
-    }
+  private async resolveProcedureLines(params: {
+    patientId: number;
+    healthProfessionalId: number;
+    procedureIds: number[];
+    patientPackageItemIds: number[];
+    insuranceGuideIds: number[];
+    benefitUses: BenefitEntitlementUseDto[];
+    onYmd: string;
+    consumeNow: boolean;
+    excludeAppointmentId?: number;
+    alreadyAssociatedGuideIds?: number[];
+  }): Promise<{
+    lines: ProcedureLine[];
+    type: ClinicalAppointmentType;
+    insuranceGuideIds: number[];
+    packageItemIds: number[];
+    benefitEntitlementIds: number[];
+    guides: GuideForAppointment[];
+  }> {
+    const privateIds = this.optionalUniqueIds(params.procedureIds);
+    const packageItemIds = this.optionalUniqueIds(params.patientPackageItemIds);
+    const insuranceGuideIds = this.optionalUniqueIds(params.insuranceGuideIds);
+    const benefitUses = params.benefitUses;
 
-    if (updateDto.insuranceGuideIds !== undefined) {
-      return this.uniqueIds(
-        updateDto.insuranceGuideIds,
-        'insuranceGuideIds is required when type is health_plan',
-      );
-    }
-
-    if (existingGuideIds.length === 0) {
+    if (
+      privateIds.length === 0 &&
+      packageItemIds.length === 0 &&
+      insuranceGuideIds.length === 0 &&
+      benefitUses.length === 0
+    ) {
       throw new BadRequestException(
-        'insuranceGuideIds is required when type is health_plan',
+        'At least one procedure from private, package, benefit card or health plan is required',
       );
     }
 
-    return existingGuideIds;
+    if (privateIds.length > 0) {
+      await this.ensurePrivateProceduresValid(
+        params.healthProfessionalId,
+        privateIds,
+      );
+    }
+
+    const packageItems =
+      packageItemIds.length > 0
+        ? await this.ensurePackageItemsValid({
+            patientId: params.patientId,
+            healthProfessionalId: params.healthProfessionalId,
+            patientPackageItemIds: packageItemIds,
+            consumeNow: params.consumeNow,
+            excludeAppointmentId: params.excludeAppointmentId,
+          })
+        : [];
+
+    const benefitLines =
+      benefitUses.length > 0
+        ? await this.ensureBenefitUsesValid({
+            patientId: params.patientId,
+            healthProfessionalId: params.healthProfessionalId,
+            uses: benefitUses,
+            onYmd: params.onYmd,
+            consumeNow: params.consumeNow,
+            excludeAppointmentId: params.excludeAppointmentId,
+          })
+        : [];
+
+    const guides =
+      insuranceGuideIds.length > 0
+        ? await this.loadAndValidateGuides({
+            insuranceGuideIds,
+            patientId: params.patientId,
+            healthProfessionalId: params.healthProfessionalId,
+            alreadyAssociatedIds: params.alreadyAssociatedGuideIds,
+          })
+        : [];
+
+    const lines: ProcedureLine[] = [
+      ...privateIds.map((procedureId) => ({
+        procedureId,
+        origin: ClinicalAppointmentProcedureOrigin.private,
+      })),
+      ...packageItems.map((item) => ({
+        procedureId: item.procedureId,
+        origin: ClinicalAppointmentProcedureOrigin.package,
+        patientPackageItemId: item.id,
+      })),
+      ...benefitLines.map((item) => ({
+        procedureId: item.procedureId,
+        origin: ClinicalAppointmentProcedureOrigin.benefit,
+        benefitEntitlementId: item.entitlementId,
+      })),
+      ...this.linesFromGuides(guides),
+    ];
+
+    this.ensureNoDuplicateProcedures(lines);
+
+    return {
+      lines,
+      type: this.deriveType(lines),
+      insuranceGuideIds,
+      packageItemIds,
+      benefitEntitlementIds: benefitLines.map((item) => item.entitlementId),
+      guides,
+    };
   }
 
-  private async resolveNextProcedureIds(params: {
-    existingType: ClinicalAppointmentType;
-    existingGuideIds: number[];
-    existingProcedureIds: number[];
-    nextType: ClinicalAppointmentType;
-    nextGuideIds: number[];
-    nextGuides: GuideForAppointment[];
-    nextProfessionalId: number;
-    updateDto: UpdateClinicalAppointmentDto;
-  }): Promise<number[]> {
-    if (params.nextType === ClinicalAppointmentType.private) {
-      if (params.updateDto.procedureIds !== undefined) {
-        const procedureIds = this.uniqueIds(
-          params.updateDto.procedureIds,
-          'procedureIds is required when type is private',
-        );
-        await this.ensurePrivateProceduresValid(
-          params.nextProfessionalId,
-          procedureIds,
-        );
-        return procedureIds;
-      }
-
-      if (params.existingType !== ClinicalAppointmentType.private) {
-        throw new BadRequestException(
-          'procedureIds is required when changing type to private',
-        );
-      }
-
-      if (params.existingProcedureIds.length === 0) {
-        throw new BadRequestException(
-          'procedureIds is required when type is private',
-        );
-      }
-
-      await this.ensurePrivateProceduresValid(
-        params.nextProfessionalId,
-        params.existingProcedureIds,
-      );
-      return params.existingProcedureIds;
+  private deriveType(lines: ProcedureLine[]): ClinicalAppointmentType {
+    const hasPlan = lines.some(
+      (line) => line.origin === ClinicalAppointmentProcedureOrigin.health_plan,
+    );
+    const hasPrivateOrPackage = lines.some(
+      (line) =>
+        line.origin === ClinicalAppointmentProcedureOrigin.private ||
+        line.origin === ClinicalAppointmentProcedureOrigin.package ||
+        line.origin === ClinicalAppointmentProcedureOrigin.benefit,
+    );
+    if (hasPlan && hasPrivateOrPackage) {
+      return ClinicalAppointmentType.mixed;
     }
+    if (hasPlan) {
+      return ClinicalAppointmentType.health_plan;
+    }
+    return ClinicalAppointmentType.private;
+  }
 
-    if (params.updateDto.procedureIds !== undefined) {
+  private linesFromGuides(guides: GuideForAppointment[]): ProcedureLine[] {
+    const lines: ProcedureLine[] = [];
+    const seen = new Set<number>();
+    for (const guide of guides) {
+      for (const item of guide.procedures) {
+        if (seen.has(item.procedureId)) {
+          continue;
+        }
+        seen.add(item.procedureId);
+        lines.push({
+          procedureId: item.procedureId,
+          origin: ClinicalAppointmentProcedureOrigin.health_plan,
+          insuranceGuideId: guide.id,
+        });
+      }
+    }
+    return lines;
+  }
+
+  private ensureNoDuplicateProcedures(lines: ProcedureLine[]) {
+    const ids = lines.map((line) => line.procedureId);
+    if (new Set(ids).size !== ids.length) {
       throw new BadRequestException(
-        'procedureIds must be omitted when type is health_plan; procedures are copied from the insurance guides',
+        'The same procedure cannot be added from more than one origin in the same appointment',
       );
     }
-
-    const shouldCopyFromGuides =
-      params.existingType !== ClinicalAppointmentType.health_plan ||
-      !this.sameIdSet(params.existingGuideIds, params.nextGuideIds);
-
-    if (shouldCopyFromGuides) {
-      return this.procedureIdsFromGuides(params.nextGuides);
-    }
-
-    return params.existingProcedureIds;
   }
 
   private consumeKey(
-    type: ClinicalAppointmentType,
-    guides: Array<{ id: number; procedures: Array<{ procedureId: number }> }>,
     status: ClinicalAppointmentStatus,
+    guides: Array<{ id: number; procedures: Array<{ procedureId: number }> }>,
+    packageItemIds: number[],
+    benefitEntitlementIds: number[] = [],
   ): string | null {
-    if (
-      type !== ClinicalAppointmentType.health_plan ||
-      status !== ClinicalAppointmentStatus.finished ||
-      guides.length === 0
-    ) {
+    if (status !== ClinicalAppointmentStatus.finished) {
       return null;
     }
 
-    return guides
+    const guidePart = guides
       .map((guide) => {
         const procedureIds = guide.procedures
           .map((item) => item.procedureId)
@@ -439,6 +653,14 @@ export class ClinicalAppointmentsService {
       })
       .sort()
       .join('|');
+    const packagePart = [...packageItemIds].sort((a, b) => a - b).join(',');
+    const benefitPart = [...benefitEntitlementIds]
+      .sort((a, b) => a - b)
+      .join(',');
+    if (!guidePart && !packagePart && !benefitPart) {
+      return null;
+    }
+    return `${guidePart}|pkg:${packagePart}|ben:${benefitPart}`;
   }
 
   private ensureValidInterval(scheduledAt: Date, endsAt: Date) {
@@ -447,38 +669,15 @@ export class ClinicalAppointmentsService {
     }
   }
 
-  private uniqueIds(
-    ids: number[] | undefined,
-    requiredMessage: string,
-  ): number[] {
-    if (!ids?.length) {
-      throw new BadRequestException(requiredMessage);
+  private optionalUniqueIds(ids: number[]): number[] {
+    if (ids.length === 0) {
+      return [];
     }
-
     const unique = [...new Set(ids)];
     if (unique.length !== ids.length) {
       throw new BadRequestException('IDs cannot contain duplicates');
     }
-
     return unique;
-  }
-
-  private sameIdSet(left: number[], right: number[]): boolean {
-    if (left.length !== right.length) {
-      return false;
-    }
-    const rightSet = new Set(right);
-    return left.every((id) => rightSet.has(id));
-  }
-
-  private procedureIdsFromGuides(guides: GuideForAppointment[]): number[] {
-    return [
-      ...new Set(
-        guides.flatMap((guide) =>
-          guide.procedures.map((item) => item.procedureId),
-        ),
-      ),
-    ];
   }
 
   private async ensurePrivateProceduresValid(
@@ -496,6 +695,16 @@ export class ClinicalAppointmentsService {
       throw new NotFoundException(`Procedure ${missing} not found`);
     }
 
+    await this.ensureProceduresMatchProfessional(
+      healthProfessionalId,
+      procedures,
+    );
+  }
+
+  private async ensureProceduresMatchProfessional(
+    healthProfessionalId: number,
+    procedures: Array<{ id: number; specialtyId: number }>,
+  ) {
     const links = await this.prisma.healthProfessionalSpecialty.findMany({
       where: { healthProfessionalId },
       select: { specialtyId: true },
@@ -509,6 +718,236 @@ export class ClinicalAppointmentsService {
         );
       }
     }
+  }
+
+  private async ensurePackageItemsValid(params: {
+    patientId: number;
+    healthProfessionalId: number;
+    patientPackageItemIds: number[];
+    consumeNow: boolean;
+    excludeAppointmentId?: number;
+  }): Promise<Array<{ id: number; procedureId: number }>> {
+    const items = await this.prisma.patientPackageItem.findMany({
+      where: { id: { in: params.patientPackageItemIds } },
+      include: {
+        procedure: { select: { id: true, specialtyId: true } },
+        patientPackage: true,
+      },
+    });
+
+    if (items.length !== params.patientPackageItemIds.length) {
+      const found = new Set(items.map((item) => item.id));
+      const missing = params.patientPackageItemIds.find((id) => !found.has(id));
+      throw new NotFoundException(`Patient package item ${missing} not found`);
+    }
+
+    const reservedByItemId = await this.reservedPackageQuantities(
+      params.patientPackageItemIds,
+      params.excludeAppointmentId,
+    );
+
+    await this.ensureProceduresMatchProfessional(
+      params.healthProfessionalId,
+      items.map((item) => item.procedure),
+    );
+
+    for (const item of items) {
+      if (item.patientPackage.patientId !== params.patientId) {
+        throw new BadRequestException(
+          `Patient package item ${item.id} does not belong to patient ${params.patientId}`,
+        );
+      }
+      if (item.patientPackage.status === PatientPackageStatus.cancelled) {
+        throw new BadRequestException(
+          `Patient package ${item.patientPackageId} is cancelled`,
+        );
+      }
+      const reserved = params.consumeNow
+        ? 0
+        : (reservedByItemId.get(item.id) ?? 0);
+      const remaining = item.quantity - item.usedQuantity - reserved;
+      if (remaining <= 0) {
+        throw new BadRequestException(
+          `Patient package item ${item.id} has no remaining quantity`,
+        );
+      }
+    }
+
+    return items.map((item) => ({
+      id: item.id,
+      procedureId: item.procedureId,
+    }));
+  }
+
+  private async ensureBenefitUsesValid(params: {
+    patientId: number;
+    healthProfessionalId: number;
+    uses: BenefitEntitlementUseDto[];
+    onYmd: string;
+    consumeNow: boolean;
+    excludeAppointmentId?: number;
+  }): Promise<BenefitEntitlementUseDto[]> {
+    const entitlementIds = [
+      ...new Set(params.uses.map((item) => item.entitlementId)),
+    ];
+    const entitlements = await this.prisma.benefitEntitlement.findMany({
+      where: { id: { in: entitlementIds } },
+      include: {
+        procedures: {
+          include: { procedure: { select: { id: true, specialtyId: true } } },
+        },
+        subscription: { include: { dependents: true } },
+      },
+    });
+    if (entitlements.length !== entitlementIds.length) {
+      const found = new Set(entitlements.map((item) => item.id));
+      const missing = entitlementIds.find((id) => !found.has(id));
+      throw new NotFoundException(`Benefit entitlement ${missing} not found`);
+    }
+
+    const byId = new Map(entitlements.map((item) => [item.id, item]));
+    const onDate = ymdToUtcDate(params.onYmd);
+    const proceduresForProfessional: Array<{
+      id: number;
+      specialtyId: number;
+    }> = [];
+
+    for (const use of params.uses) {
+      const entitlement = byId.get(use.entitlementId);
+      if (!entitlement) {
+        throw new NotFoundException(
+          `Benefit entitlement ${use.entitlementId} not found`,
+        );
+      }
+      if (entitlement.kind !== BenefitKind.quota) {
+        throw new BadRequestException(
+          `Benefit entitlement ${entitlement.id} is not a quota`,
+        );
+      }
+      const covered = entitlement.procedures.find(
+        (item) => item.procedureId === use.procedureId,
+      );
+      if (!covered) {
+        throw new BadRequestException(
+          `Procedure ${use.procedureId} is not covered by benefit entitlement ${entitlement.id}`,
+        );
+      }
+      const subscription = entitlement.subscription;
+      const isMember =
+        subscription.patientId === params.patientId ||
+        subscription.dependents.some(
+          (item) => item.patientId === params.patientId,
+        );
+      const current =
+        subscription.status === BenefitSubscriptionStatus.active &&
+        subscription.startsAt <= onDate &&
+        subscription.expiresAt >= onDate;
+      if (!isMember || !current) {
+        throw new BadRequestException(
+          `Benefit entitlement ${entitlement.id} is not available for patient ${params.patientId}`,
+        );
+      }
+      proceduresForProfessional.push(covered.procedure);
+    }
+
+    await this.ensureProceduresMatchProfessional(
+      params.healthProfessionalId,
+      proceduresForProfessional,
+    );
+
+    const reservedById = await this.reservedBenefitQuantities(
+      entitlementIds,
+      params.excludeAppointmentId,
+    );
+    const requested = new Map<number, number>();
+    for (const use of params.uses) {
+      requested.set(
+        use.entitlementId,
+        (requested.get(use.entitlementId) ?? 0) + 1,
+      );
+    }
+    for (const [entitlementId, count] of requested) {
+      const entitlement = byId.get(entitlementId);
+      if (!entitlement || entitlement.quantity == null) {
+        throw new BadRequestException(
+          `Benefit entitlement ${entitlementId} has no quantity`,
+        );
+      }
+      const reserved = params.consumeNow
+        ? 0
+        : (reservedById.get(entitlementId) ?? 0);
+      const remaining =
+        entitlement.quantity - entitlement.usedQuantity - reserved;
+      if (count > remaining) {
+        throw new BadRequestException(
+          `Benefit entitlement ${entitlementId} has no remaining quantity`,
+        );
+      }
+    }
+
+    return params.uses;
+  }
+
+  private async reservedBenefitQuantities(
+    entitlementIds: number[],
+    excludeAppointmentId?: number,
+  ): Promise<Map<number, number>> {
+    const map = new Map<number, number>();
+    if (entitlementIds.length === 0) {
+      return map;
+    }
+    const grouped = await this.prisma.clinicalAppointmentProcedure.groupBy({
+      by: ['benefitEntitlementId'],
+      where: {
+        origin: ClinicalAppointmentProcedureOrigin.benefit,
+        benefitEntitlementId: { in: entitlementIds },
+        clinicalAppointment: {
+          status: { in: STATUSES_THAT_RESERVE },
+          ...(excludeAppointmentId !== undefined && {
+            id: { not: excludeAppointmentId },
+          }),
+        },
+      },
+      _count: { _all: true },
+    });
+    for (const row of grouped) {
+      if (row.benefitEntitlementId != null) {
+        map.set(row.benefitEntitlementId, row._count._all);
+      }
+    }
+    return map;
+  }
+
+  private async reservedPackageQuantities(
+    itemIds: number[],
+    excludeAppointmentId?: number,
+  ): Promise<Map<number, number>> {
+    const map = new Map<number, number>();
+    if (itemIds.length === 0) {
+      return map;
+    }
+
+    const grouped = await this.prisma.clinicalAppointmentProcedure.groupBy({
+      by: ['patientPackageItemId'],
+      where: {
+        origin: ClinicalAppointmentProcedureOrigin.package,
+        patientPackageItemId: { in: itemIds },
+        clinicalAppointment: {
+          status: { in: STATUSES_THAT_RESERVE },
+          ...(excludeAppointmentId !== undefined && {
+            id: { not: excludeAppointmentId },
+          }),
+        },
+      },
+      _count: { _all: true },
+    });
+
+    for (const row of grouped) {
+      if (row.patientPackageItemId != null) {
+        map.set(row.patientPackageItemId, row._count._all);
+      }
+    }
+    return map;
   }
 
   private async loadAndValidateGuides(params: {
@@ -627,6 +1066,120 @@ export class ClinicalAppointmentsService {
           AND "procedure_id" = ${procedureId}
           AND "used_quantity" > 0
       `;
+    }
+  }
+
+  private async consumePackageItems(
+    tx: Prisma.TransactionClient,
+    itemIds: number[],
+  ) {
+    const packageIds = new Set<number>();
+    for (const itemId of itemIds) {
+      const rows = await tx.$executeRaw`
+        UPDATE "patient_package_items"
+        SET "used_quantity" = "used_quantity" + 1
+        WHERE "id" = ${itemId}
+          AND "used_quantity" < "quantity"
+      `;
+      if (rows === 0) {
+        throw new BadRequestException(
+          `Patient package item ${itemId} has no remaining quantity`,
+        );
+      }
+      const item = await tx.patientPackageItem.findUnique({
+        where: { id: itemId },
+        select: { patientPackageId: true },
+      });
+      if (item) {
+        packageIds.add(item.patientPackageId);
+      }
+    }
+    for (const patientPackageId of packageIds) {
+      await this.refreshPatientPackageStatus(tx, patientPackageId);
+    }
+  }
+
+  private async releasePackageItems(
+    tx: Prisma.TransactionClient,
+    itemIds: number[],
+  ) {
+    const packageIds = new Set<number>();
+    for (const itemId of itemIds) {
+      await tx.$executeRaw`
+        UPDATE "patient_package_items"
+        SET "used_quantity" = "used_quantity" - 1
+        WHERE "id" = ${itemId}
+          AND "used_quantity" > 0
+      `;
+      const item = await tx.patientPackageItem.findUnique({
+        where: { id: itemId },
+        select: { patientPackageId: true },
+      });
+      if (item) {
+        packageIds.add(item.patientPackageId);
+      }
+    }
+    for (const patientPackageId of packageIds) {
+      await this.refreshPatientPackageStatus(tx, patientPackageId);
+    }
+  }
+
+  private async consumeBenefitEntitlements(
+    tx: Prisma.TransactionClient,
+    entitlementIds: number[],
+  ) {
+    for (const entitlementId of entitlementIds) {
+      const rows = await tx.$executeRaw`
+        UPDATE "benefit_entitlements"
+        SET "used_quantity" = "used_quantity" + 1
+        WHERE "id" = ${entitlementId}
+          AND "quantity" IS NOT NULL
+          AND "used_quantity" < "quantity"
+      `;
+      if (rows === 0) {
+        throw new BadRequestException(
+          `Benefit entitlement ${entitlementId} has no remaining quantity`,
+        );
+      }
+    }
+  }
+
+  private async releaseBenefitEntitlements(
+    tx: Prisma.TransactionClient,
+    entitlementIds: number[],
+  ) {
+    for (const entitlementId of entitlementIds) {
+      await tx.$executeRaw`
+        UPDATE "benefit_entitlements"
+        SET "used_quantity" = "used_quantity" - 1
+        WHERE "id" = ${entitlementId}
+          AND "used_quantity" > 0
+      `;
+    }
+  }
+
+  private async refreshPatientPackageStatus(
+    tx: Prisma.TransactionClient,
+    patientPackageId: number,
+  ) {
+    const record = await tx.patientPackage.findUnique({
+      where: { id: patientPackageId },
+      include: { items: true },
+    });
+    if (!record || record.status === PatientPackageStatus.cancelled) {
+      return;
+    }
+    const exhausted =
+      record.items.length > 0 &&
+      record.items.every((item) => item.usedQuantity >= item.quantity);
+    const next = exhausted
+      ? PatientPackageStatus.exhausted
+      : PatientPackageStatus.active;
+    if (record.status !== next) {
+      await tx.patientPackage.update({
+        where: { id: patientPackageId },
+        data: { status: next },
+      });
     }
   }
 

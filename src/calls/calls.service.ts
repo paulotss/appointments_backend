@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CallRecordStatus, CallStatus, Prisma } from '@prisma/client';
+import { CallRecordStatus, CallStatus, Prisma, UserRole } from '@prisma/client';
 import {
   endOfDaySaoPaulo,
   startOfDaySaoPaulo,
@@ -183,7 +183,7 @@ export class CallsService {
     currentUser: JwtPayload,
     requestedUserId?: number,
   ): Prisma.CallWhereInput {
-    if (currentUser.isAdmin) {
+    if (currentUser.role === UserRole.ADMIN) {
       if (requestedUserId !== undefined) {
         return { userId: requestedUserId };
       }
@@ -195,7 +195,7 @@ export class CallsService {
       requestedUserId !== currentUser.sub
     ) {
       throw new ForbiddenException(
-        'Non-admin users cannot filter calls by another userId',
+        'Only administrators can filter calls by another userId',
       );
     }
 

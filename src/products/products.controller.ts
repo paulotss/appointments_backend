@@ -17,6 +17,9 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CLINICAL_STAFF_ROLES, STAFF_ROLES } from '../auth/roles';
+
 import { StockBatchResponseDto } from '../stock-batches/dto/stock-batch-response.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { StockConsolidationDto } from './dto/stock-consolidation.dto';
@@ -25,6 +28,7 @@ import { ProductsService } from './products.service';
 
 @ApiTags('products')
 @ApiExtraModels(StockConsolidationDto, StockBatchResponseDto)
+@Roles(...STAFF_ROLES)
 @Controller('products')
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
@@ -35,6 +39,7 @@ export class ProductsController {
     return this.productsService.create(createProductDto);
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get()
   @ApiOperation({ summary: 'Listar produtos' })
   @ApiQuery({
@@ -46,6 +51,7 @@ export class ProductsController {
     return this.productsService.findAll(all !== undefined);
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get('stock-consolidation')
   @ApiOperation({
     summary: 'Consolidar estoque por produto',
@@ -66,6 +72,7 @@ export class ProductsController {
     return this.productsService.findStockConsolidation(all !== undefined);
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get(':id')
   @ApiOperation({ summary: 'Buscar produto por id' })
   @ApiParam({ name: 'id', example: 1 })

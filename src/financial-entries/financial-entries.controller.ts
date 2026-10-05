@@ -8,13 +8,18 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { STAFF_ROLES } from '../auth/roles';
+
 import {
   CreatePrivateFinancialEntryDto,
   ListFinancialEntriesQueryDto,
+  ReceiveBenefitInstallmentDto,
 } from './dto/financial-entry.dto';
 import { FinancialEntriesService } from './financial-entries.service';
 
 @ApiTags('financial-entries')
+@Roles(...STAFF_ROLES)
 @Controller('financial-entries')
 export class FinancialEntriesController {
   constructor(
@@ -25,7 +30,7 @@ export class FinancialEntriesController {
   @ApiOperation({
     summary: 'Registrar pagamento de procedimento particular',
     description:
-      'Gera a entrada ja paga a partir de um agendamento particular finished. discountAmount e surchargeAmount sao opcionais. O valor liquido e calculado no servidor.',
+      'Gera a entrada ja paga a partir dos procedimentos avulsos de um agendamento particular ou misto finished. Itens de pacote nao sao cobrados. discountAmount e surchargeAmount sao opcionais.',
   })
   create(@Body() dto: CreatePrivateFinancialEntryDto) {
     return this.financialEntriesService.createPrivateEntry(dto);
@@ -46,5 +51,18 @@ export class FinancialEntriesController {
   @ApiParam({ name: 'id', example: 1 })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.financialEntriesService.findOne(id);
+  }
+
+  @Post(':id/receive')
+  @ApiOperation({
+    summary: 'Receber parcela pendente do cartão',
+    description: 'Marca a parcela como paga pelo valor integral.',
+  })
+  @ApiParam({ name: 'id', example: 1 })
+  receive(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReceiveBenefitInstallmentDto,
+  ) {
+    return this.financialEntriesService.receiveBenefitInstallment(id, dto);
   }
 }

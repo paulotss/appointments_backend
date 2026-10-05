@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import {
   endOfDaySaoPaulo,
@@ -198,7 +198,7 @@ export class AppointmentsService {
     currentUser: JwtPayload,
     requestedAttendantId?: number,
   ): Prisma.AppointmentWhereInput {
-    if (currentUser.isAdmin) {
+    if (currentUser.role === UserRole.ADMIN) {
       if (requestedAttendantId !== undefined) {
         return { attendantId: requestedAttendantId };
       }
@@ -210,7 +210,7 @@ export class AppointmentsService {
       requestedAttendantId !== currentUser.sub
     ) {
       throw new ForbiddenException(
-        'Non-admin users cannot filter appointments by another attendantId',
+        'Only administrators can filter appointments by another attendantId',
       );
     }
 

@@ -9,11 +9,15 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CLINICAL_STAFF_ROLES, STAFF_ROLES } from '../auth/roles';
+
 import { CreateHealthPlanDto } from './dto/create-health-plan.dto';
 import { UpdateHealthPlanDto } from './dto/update-health-plan.dto';
 import { HealthPlansService } from './health-plans.service';
 
 @ApiTags('health-plans')
+@Roles(...STAFF_ROLES)
 @Controller('health-plans')
 export class HealthPlansController {
   constructor(private readonly healthPlansService: HealthPlansService) {}
@@ -24,12 +28,14 @@ export class HealthPlansController {
     return this.healthPlansService.create(createHealthPlanDto);
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get()
   @ApiOperation({ summary: 'Listar planos de saude' })
   findAll() {
     return this.healthPlansService.findAll();
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get(':id')
   @ApiOperation({ summary: 'Buscar plano de saude por id' })
   @ApiParam({ name: 'id', example: 1 })

@@ -9,11 +9,15 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CLINICAL_STAFF_ROLES, STAFF_ROLES } from '../auth/roles';
+
 import { CreateStorageLocationDto } from './dto/create-storage-location.dto';
 import { UpdateStorageLocationDto } from './dto/update-storage-location.dto';
 import { StorageLocationsService } from './storage-locations.service';
 
 @ApiTags('storage-locations')
+@Roles(...STAFF_ROLES)
 @Controller('storage-locations')
 export class StorageLocationsController {
   constructor(
@@ -26,12 +30,14 @@ export class StorageLocationsController {
     return this.storageLocationsService.create(createStorageLocationDto);
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get()
   @ApiOperation({ summary: 'Listar locais de armazenamento' })
   findAll() {
     return this.storageLocationsService.findAll();
   }
 
+  @Roles(...CLINICAL_STAFF_ROLES)
   @Get(':id')
   @ApiOperation({ summary: 'Buscar local de armazenamento por id' })
   @ApiParam({ name: 'id', example: 1 })

@@ -7,7 +7,6 @@ import {
   Patch,
   Post,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -15,8 +14,11 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import { Public } from '../auth/decorators/public.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { STAFF_ROLES } from '../auth/roles';
+
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
@@ -24,10 +26,12 @@ import { UpdateMessageDto } from './dto/update-message.dto';
 import { MessagesService } from './messages.service';
 
 @ApiTags('messages')
+@Roles(...STAFF_ROLES)
 @Controller('messages')
 export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
+  @Public()
   @Post()
   @ApiOperation({ summary: 'Registrar conversa WhatsApp (webhook GPT Maker)' })
   create(@Body() createMessageDto: CreateMessageDto) {
@@ -35,7 +39,6 @@ export class MessagesController {
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT')
   @ApiOperation({
     summary: 'Listar conversas WhatsApp (filtrado, paginado, com counts)',

@@ -1,6 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { CouncilType } from '@prisma/client';
+import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsIn,
   IsOptional,
   IsString,
@@ -8,9 +10,11 @@ import {
   MaxLength,
   MinLength,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 import { BRAZILIAN_UFS } from '../../common/brazilian-uf';
 import { HealthProfessionalSpecialtyInputDto } from './health-professional-specialty-input.dto';
+import { WeeklyBlockInputDto } from './weekly-block-input.dto';
 
 export class UpdateHealthProfessionalDto {
   @ApiPropertyOptional({ example: 'Dr. Joao Silva' })
@@ -58,4 +62,11 @@ export class UpdateHealthProfessionalDto {
 
   @ApiPropertyOptional({ example: false })
   isActive?: boolean;
+
+  @ApiPropertyOptional({ type: [WeeklyBlockInputDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => WeeklyBlockInputDto)
+  weeklyBlocks?: WeeklyBlockInputDto[];
 }

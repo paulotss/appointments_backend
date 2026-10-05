@@ -12,6 +12,7 @@ HOST = os.getenv("PABX_HOST", "192.168.1.250")
 PASS = os.getenv("PABX_PASS", "1234")
 API_URL = os.getenv("APPOINTMENTS_API_URL", "https://appointments-backend-6mjr.onrender.com/api")
 API_TIMEOUT = float(os.getenv("APPOINTMENTS_API_TIMEOUT", "5"))
+SERVICE_TOKEN = os.getenv("APPOINTMENTS_SERVICE_TOKEN", "").strip()
 
 TAMANHO_RAMAL_INTERNO = 3 
 IGNORED_EXTENSIONS = {"61", "192", "100"}  # Adicionado o 100 e 192 aos ignorados
@@ -21,11 +22,21 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("pabx-monitor")
 
 def build_http_session():
+    if not SERVICE_TOKEN:
+        log.error(
+            "APPOINTMENTS_SERVICE_TOKEN não definido. Gere um token com escopo CALLS_WRITE e exporte a variável."
+        )
+        raise SystemExit(1)
     session = requests.Session()
     retry = Retry(total=3, backoff_factor=0.5, status_forcelist=(500, 502, 503, 504))
     session.mount("https://", HTTPAdapter(max_retries=retry))
     session.mount("http://", HTTPAdapter(max_retries=retry))
-    session.headers.update({"Content-Type": "application/json"})
+    session.headers.update(
+        {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {SERVICE_TOKEN}",
+        }
+    )
     return session
 
 def registrar_chamada(session, origin, destination, extension, status):

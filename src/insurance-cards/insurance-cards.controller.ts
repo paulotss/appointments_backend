@@ -10,12 +10,16 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CLINICAL_STAFF_ROLES } from '../auth/roles';
+
 import { CreateInsuranceCardDto } from './dto/create-insurance-card.dto';
 import { ListInsuranceCardsQueryDto } from './dto/list-insurance-cards-query.dto';
 import { UpdateInsuranceCardDto } from './dto/update-insurance-card.dto';
 import { InsuranceCardsService } from './insurance-cards.service';
 
 @ApiTags('insurance-cards')
+@Roles(...CLINICAL_STAFF_ROLES)
 @Controller('insurance-cards')
 export class InsuranceCardsController {
   constructor(private readonly insuranceCardsService: InsuranceCardsService) {}

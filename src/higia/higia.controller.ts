@@ -5,7 +5,6 @@ import {
   HttpException,
   Post,
   Res,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -13,8 +12,10 @@ import {
   ApiProduces,
   ApiTags,
 } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { STAFF_ROLES } from '../auth/roles';
+
 import type { Response } from 'express';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AskHigiaDto } from './dto/ask-higia.dto';
 import { HigiaService, type HigiaStreamEvent } from './higia.service';
 
@@ -36,7 +37,7 @@ function streamErrorMessage(error: unknown): string {
 
 @ApiTags('higia')
 @ApiBearerAuth('JWT')
-@UseGuards(JwtAuthGuard)
+@Roles(...STAFF_ROLES)
 @Controller('higia')
 export class HigiaController {
   constructor(private readonly higiaService: HigiaService) {}
