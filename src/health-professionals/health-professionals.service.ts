@@ -20,6 +20,7 @@ import { CreateHealthProfessionalDto } from './dto/create-health-professional.dt
 import { HealthProfessionalSpecialtyInputDto } from './dto/health-professional-specialty-input.dto';
 import { ListHealthProfessionalsQueryDto } from './dto/list-health-professionals-query.dto';
 import { ReplaceScheduleExceptionsDto } from './dto/replace-schedule-exceptions.dto';
+import { ScheduleRuleInputDto } from './dto/schedule-rule-input.dto';
 import { ScheduleRangeQueryDto } from './dto/schedule-range-query.dto';
 import { UpdateHealthProfessionalDto } from './dto/update-health-professional.dto';
 import { WeeklyBlockInputDto } from './dto/weekly-block-input.dto';
@@ -63,6 +64,15 @@ const professionalInclude = Prisma.validator<Prisma.HealthProfessionalInclude>()
   weeklyBlocks: {
     orderBy: [{ weekday: 'asc' }, { startMinute: 'asc' }],
   },
+  scheduleRules: {
+    orderBy: { id: 'asc' },
+    include: {
+      procedure: { select: { id: true, name: true } },
+      windows: {
+        orderBy: [{ weekday: 'asc' }, { startMinute: 'asc' }],
+      },
+    },
+  },
 });
 
 type ProfessionalRecord = Prisma.HealthProfessionalGetPayload<{
@@ -79,6 +89,10 @@ export class HealthProfessionalsService {
     await this.ensureSpecialtiesValid(createHealthProfessionalDto.specialties);
     const weeklyBlocks = this.ensureWeeklyBlocksValid(
       createHealthProfessionalDto.weeklyBlocks ?? [],
+    );
+    const scheduleRules = await this.ensureScheduleRulesValid(
+      createHealthProfessionalDto.specialties.map((item) => item.specialtyId),
+      createHealthProfessionalDto.scheduleRules ?? [],
     );
 
     try {
@@ -104,6 +118,25 @@ export class HealthProfessionalsService {
                 weekday: item.weekday,
                 startMinute: item.startMinute,
                 endMinute: item.endMinute,
+              })),
+            },
+          }),
+          ...(scheduleRules.length > 0 && {
+            scheduleRules: {
+              create: scheduleRules.map((rule) => ({
+                procedureId: rule.procedureId,
+                maxConcurrentAppointments: rule.maxConcurrentAppointments,
+                durationMinutes: rule.durationMinutes,
+                slotIntervalMinutes: rule.slotIntervalMinutes,
+                allowOverbooking: rule.allowOverbooking,
+                notes: rule.notes,
+                windows: {
+                  create: rule.windows.map((window) => ({
+                    weekday: window.weekday,
+                    startMinute: window.startMinute,
+                    endMinute: window.endMinute,
+                  })),
+                },
               })),
             },
           }),
@@ -174,6 +207,18 @@ export class HealthProfessionalsService {
       updateHealthProfessionalDto.weeklyBlocks !== undefined
         ? this.ensureWeeklyBlocksValid(updateHealthProfessionalDto.weeklyBlocks)
         : undefined;
+    const specialtyIds =
+      updateHealthProfessionalDto.specialties?.map((item) => item.specialtyId);
+    const scheduleRules =
+      updateHealthProfessionalDto.scheduleRules !== undefined
+        ? await this.ensureScheduleRulesValid(
+            specialtyIds ?? (await this.currentSpecialtyIds(id)),
+            updateHealthProfessionalDto.scheduleRules,
+          )
+        : undefined;
+    if (specialtyIds && scheduleRules === undefined) {
+      await this.ensureExistingRulesMatchSpecialties(id, specialtyIds);
+    }
 
     try {
       const updated = await this.prisma.$transaction(async (tx) => {
@@ -201,6 +246,32 @@ export class HealthProfessionalsService {
                 startMinute: item.startMinute,
                 endMinute: item.endMinute,
               })),
+            });
+          }
+        }
+
+        if (scheduleRules !== undefined) {
+          await tx.professionalScheduleRule.deleteMany({
+            where: { healthProfessionalId: id },
+          });
+          for (const rule of scheduleRules) {
+            await tx.professionalScheduleRule.create({
+              data: {
+                healthProfessionalId: id,
+                procedureId: rule.procedureId,
+                maxConcurrentAppointments: rule.maxConcurrentAppointments,
+                durationMinutes: rule.durationMinutes,
+                slotIntervalMinutes: rule.slotIntervalMinutes,
+                allowOverbooking: rule.allowOverbooking,
+                notes: rule.notes,
+                windows: {
+                  create: rule.windows.map((window) => ({
+                    weekday: window.weekday,
+                    startMinute: window.startMinute,
+                    endMinute: window.endMinute,
+                  })),
+                },
+              },
             });
           }
         }
@@ -482,7 +553,114 @@ export class HealthProfessionalsService {
         startTime: formatMinute(block.startMinute),
         endTime: formatMinute(block.endMinute),
       })),
+      scheduleRules: professional.scheduleRules.map((rule) => ({
+        id: rule.id,
+        procedureId: rule.procedureId,
+        procedure: rule.procedure,
+        maxConcurrentAppointments: rule.maxConcurrentAppointments,
+        durationMinutes: rule.durationMinutes,
+        slotIntervalMinutes: rule.slotIntervalMinutes,
+        allowOverbooking: rule.allowOverbooking,
+        notes: rule.notes,
+        windows: rule.windows.map((window) => ({
+          weekday: window.weekday,
+          startTime: formatMinute(window.startMinute),
+          endTime: formatMinute(window.endMinute),
+        })),
+      })),
     };
+  }
+
+  private async currentSpecialtyIds(id: number) {
+    const links = await this.prisma.healthProfessionalSpecialty.findMany({
+      where: { healthProfessionalId: id },
+      select: { specialtyId: true },
+    });
+    return links.map((item) => item.specialtyId);
+  }
+
+  private async ensureExistingRulesMatchSpecialties(
+    id: number,
+    specialtyIds: number[],
+  ) {
+    const rules = await this.prisma.professionalScheduleRule.findMany({
+      where: { healthProfessionalId: id },
+      select: { procedure: { select: { id: true, specialtyId: true } } },
+    });
+    const allowed = new Set(specialtyIds);
+    for (const rule of rules) {
+      if (!allowed.has(rule.procedure.specialtyId)) {
+        throw new BadRequestException(
+          `Procedure ${rule.procedure.id} is outside the professional specialties`,
+        );
+      }
+    }
+  }
+
+  private async ensureScheduleRulesValid(
+    specialtyIds: number[],
+    rules: ScheduleRuleInputDto[],
+  ) {
+    const procedureIds = rules.map((item) => item.procedureId);
+    if (new Set(procedureIds).size !== procedureIds.length) {
+      throw new BadRequestException(
+        'Duplicate procedures are not allowed in schedule rules',
+      );
+    }
+    if (procedureIds.length === 0) {
+      return [];
+    }
+
+    const procedures = await this.prisma.procedure.findMany({
+      where: { id: { in: procedureIds } },
+      select: { id: true, specialtyId: true },
+    });
+    if (procedures.length !== procedureIds.length) {
+      const found = new Set(procedures.map((item) => item.id));
+      const missing = procedureIds.find((procedureId) => !found.has(procedureId));
+      throw new NotFoundException(`Procedure ${missing} not found`);
+    }
+    const allowed = new Set(specialtyIds);
+    for (const procedure of procedures) {
+      if (!allowed.has(procedure.specialtyId)) {
+        throw new BadRequestException(
+          `Procedure ${procedure.id} is outside the professional specialties`,
+        );
+      }
+    }
+
+    return rules.map((rule) => {
+      const windows = rule.windows.map((window) => ({
+        weekday: window.weekday,
+        ...this.parseInterval(window),
+      }));
+      for (let weekday = 0; weekday <= 6; weekday += 1) {
+        const sameDay = windows.filter((item) => item.weekday === weekday);
+        if (intervalsOverlap(sameDay)) {
+          throw new BadRequestException(
+            'Attendance windows on the same weekday cannot overlap',
+          );
+        }
+      }
+      const fits = windows.some(
+        (window) =>
+          window.endMinute - window.startMinute >= rule.durationMinutes,
+      );
+      if (!fits) {
+        throw new BadRequestException(
+          `Procedure ${rule.procedureId} duration does not fit any attendance window`,
+        );
+      }
+      return {
+        procedureId: rule.procedureId,
+        maxConcurrentAppointments: rule.maxConcurrentAppointments,
+        durationMinutes: rule.durationMinutes,
+        slotIntervalMinutes: rule.slotIntervalMinutes,
+        allowOverbooking: rule.allowOverbooking,
+        notes: rule.notes?.trim() ? rule.notes.trim() : null,
+        windows,
+      };
+    });
   }
 
   private async ensureSpecialtiesValid(

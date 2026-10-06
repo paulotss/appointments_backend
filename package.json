@@ -24,10 +24,10 @@
     "prisma:db:push": "prisma db push",
     "prisma:seed": "prisma db seed",
     "prisma:studio": "prisma studio",
-    "docker:dev:up": "docker compose -p appointments-dev -f docker-compose.dev.yml up --build",
-    "docker:dev:down": "docker compose -p appointments-dev -f docker-compose.dev.yml down",
-    "docker:prod:up": "docker compose -p appointments-prod -f docker-compose.prod.yml up --build -d",
-    "docker:prod:down": "docker compose -p appointments-prod -f docker-compose.prod.yml down"
+    "docker:dev:up": "docker compose -p appointments_backend_dev -f docker-compose.dev.yml up --build",
+    "docker:dev:down": "docker compose -p appointments_backend_dev -f docker-compose.dev.yml down",
+    "docker:prod:up": "docker compose -p appointments_backend_prod -f docker-compose.prod.yml up --build -d",
+    "docker:prod:down": "docker compose -p appointments_backend_prod -f docker-compose.prod.yml down"
   },
   "prisma": {
     "seed": "ts-node --esm prisma/seed.ts"

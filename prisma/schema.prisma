@@ -38,6 +38,7 @@ enum PatientFileOrigin {
 enum ServiceTokenScope {
   CALLS_WRITE
   AGENT_DATA_READ
+  AGENT_DATA_WRITE
 
   @@map("service_token_scope")
 }
@@ -241,6 +242,7 @@ model HealthProfessional {
   specialties           HealthProfessionalSpecialty[]
   weeklyBlocks          ProfessionalWeeklyBlock[]
   dayExceptions         ProfessionalDayException[]
+  scheduleRules         ProfessionalScheduleRule[]
   stockExits            StockExit[]
   insuranceGuides       InsuranceGuide[]
   clinicalAppointments  ClinicalAppointment[]
@@ -274,6 +276,36 @@ model ProfessionalDayException {
 
   @@index([healthProfessionalId, date])
   @@map("professional_day_exceptions")
+}
+
+model ProfessionalScheduleRule {
+  id                        Int                              @id @default(autoincrement())
+  healthProfessionalId      Int                              @map("health_professional_id")
+  procedureId               Int                              @map("procedure_id")
+  maxConcurrentAppointments Int                              @map("max_concurrent_appointments")
+  durationMinutes           Int                              @map("duration_minutes")
+  slotIntervalMinutes       Int                              @map("slot_interval_minutes")
+  allowOverbooking          Boolean                          @default(false) @map("allow_overbooking")
+  notes                     String?                          @db.VarChar(500)
+  healthProfessional        HealthProfessional               @relation(fields: [healthProfessionalId], references: [id], onDelete: Cascade)
+  procedure                 Procedure                        @relation(fields: [procedureId], references: [id], onDelete: Restrict)
+  windows                   ProfessionalScheduleRuleWindow[]
+
+  @@unique([healthProfessionalId, procedureId])
+  @@index([procedureId])
+  @@map("professional_schedule_rules")
+}
+
+model ProfessionalScheduleRuleWindow {
+  id          Int                      @id @default(autoincrement())
+  ruleId      Int                      @map("rule_id")
+  weekday     Int
+  startMinute Int                      @map("start_minute")
+  endMinute   Int                      @map("end_minute")
+  rule        ProfessionalScheduleRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId, weekday])
+  @@map("professional_schedule_rule_windows")
 }
 
 model HealthProfessionalSpecialty {
@@ -352,6 +384,7 @@ model Procedure {
   financialEntryItems   FinancialEntryItem[]
   packageItems                 ProcedurePackageItem[]
   patientPackageItems          PatientPackageItem[]
+  scheduleRules                ProfessionalScheduleRule[]
   benefitProcedures            BenefitProcedure[]
   benefitEntitlementProcedures BenefitEntitlementProcedure[]
 

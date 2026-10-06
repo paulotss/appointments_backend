@@ -1,8 +1,10 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
   ParseIntPipe,
+  Post,
   Query,
 } from '@nestjs/common';
 import {
@@ -12,12 +14,18 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { ServiceTokenScope } from '@prisma/client';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ServiceScopes } from '../auth/decorators/service-scopes.decorator';
+import type { AuthPrincipal } from '../auth/interfaces/jwt-payload.interface';
 import { STAFF_ROLES } from '../auth/roles';
+import { ClinicalAppointmentsService } from '../clinical-appointments/clinical-appointments.service';
+import { AgentCreateClinicalAppointmentDto } from '../clinical-appointments/dto/agent-create-clinical-appointment.dto';
+import { ScheduleRulesService } from '../schedule-rules/schedule-rules.service';
 
 import { AgentDataService } from './agent-data.service';
 import {
+  AvailableSlotsAgentQueryDto,
   ListBillingBatchesAgentQueryDto,
   ListCallCenterAppointmentsAgentQueryDto,
   ListCallsAgentQueryDto,
@@ -28,10 +36,12 @@ import {
   ListInsuranceGuidesAgentQueryDto,
   ListMessagesAgentQueryDto,
   ListPayablesAgentQueryDto,
+  ListProcedurePackagesAgentQueryDto,
   ListProceduresAgentQueryDto,
   ListProductsAgentQueryDto,
   ListStockBatchesAgentQueryDto,
   ListStockExitsAgentQueryDto,
+  PatientScopeAgentQueryDto,
   SearchQueryDto,
 } from './dto/agent-data-query.dto';
 
@@ -41,7 +51,11 @@ import {
 @ServiceScopes(ServiceTokenScope.AGENT_DATA_READ)
 @Controller('agent-data')
 export class AgentDataController {
-  constructor(private readonly agentDataService: AgentDataService) {}
+  constructor(
+    private readonly agentDataService: AgentDataService,
+    private readonly scheduleRulesService: ScheduleRulesService,
+    private readonly clinicalAppointmentsService: ClinicalAppointmentsService,
+  ) {}
 
   @Get('overview')
   @ApiOperation({ summary: 'Snapshot compacto da clinica para agentes' })
@@ -56,7 +70,9 @@ export class AgentDataController {
   }
 
   @Get('patients')
-  @ApiOperation({ summary: 'Buscar pacientes (nome, CPF, telefone)' })
+  @ApiOperation({
+    summary: 'Buscar pacientes por nome, CPF ou telefone, sem devolver esses dados',
+  })
   searchPatients(@Query() query: SearchQueryDto) {
     return this.agentDataService.searchPatients(query);
   }
@@ -197,5 +213,65 @@ export class AgentDataController {
   @ApiOperation({ summary: 'Buscar procedimentos sem precos por plano' })
   searchProcedures(@Query() query: ListProceduresAgentQueryDto) {
     return this.agentDataService.searchProcedures(query);
+  }
+
+  @Get('procedure-packages')
+  @ApiOperation({ summary: 'Catalogo de pacotes de procedimentos' })
+  listProcedurePackages(@Query() query: ListProcedurePackagesAgentQueryDto) {
+    return this.agentDataService.listProcedurePackages(query);
+  }
+
+  @Get('patient-packages')
+  @ApiOperation({
+    summary: 'Pacotes de um paciente, com saldo restante',
+  })
+  listPatientPackages(@Query() query: PatientScopeAgentQueryDto) {
+    return this.agentDataService.listPatientPackages(query);
+  }
+
+  @Get('benefit-subscriptions')
+  @ApiOperation({
+    summary: 'Cartao de beneficios de um paciente, com cotas restantes',
+  })
+  listBenefitSubscriptions(@Query() query: PatientScopeAgentQueryDto) {
+    return this.agentDataService.listBenefitSubscriptions(query);
+  }
+
+  @Get('health-professionals/:id/schedule-rules')
+  @ApiOperation({ summary: 'Regras de atendimento do profissional' })
+  @ApiParam({ name: 'id', example: 1 })
+  listScheduleRules(@Param('id', ParseIntPipe) id: number) {
+    return this.scheduleRulesService.listForProfessional(id);
+  }
+
+  @Get('health-professionals/:id/available-slots')
+  @ApiOperation({
+    summary: 'Horarios livres de um procedimento na ficha do profissional',
+  })
+  @ApiParam({ name: 'id', example: 1 })
+  listAvailableSlots(
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: AvailableSlotsAgentQueryDto,
+  ) {
+    return this.scheduleRulesService.availableSlots({
+      healthProfessionalId: id,
+      procedureId: query.procedureId,
+      from: query.from.slice(0, 10),
+      to: query.to.slice(0, 10),
+    });
+  }
+
+  @Post('clinical-appointments')
+  @ServiceScopes(ServiceTokenScope.AGENT_DATA_WRITE)
+  @ApiOperation({
+    summary: 'Criar agendamento clinico respeitando as regras do profissional',
+    description:
+      'Recusa com 409 quando o horario foge da ficha. endsAt pode ser omitido: a duracao sai da regra.',
+  })
+  createClinicalAppointment(
+    @Body() dto: AgentCreateClinicalAppointmentDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.clinicalAppointmentsService.createForAgent(dto, user);
   }
 }

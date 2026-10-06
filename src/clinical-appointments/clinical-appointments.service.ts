@@ -14,7 +14,11 @@ import {
   Prisma,
   UserRole,
 } from '@prisma/client';
-import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import {
+  AuthPrincipal,
+  isServicePrincipal,
+  type JwtPayload,
+} from '../auth/interfaces/jwt-payload.interface';
 import {
   endOfDaySaoPaulo,
   startOfDaySaoPaulo,
@@ -22,7 +26,11 @@ import {
 } from '../common/datetime/sao-paulo-day-bounds';
 import { HealthProfessionalsService } from '../health-professionals/health-professionals.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertAgentMayBook } from '../schedule-rules/assert-agent-may-book';
+import { ScheduleRulesService } from '../schedule-rules/schedule-rules.service';
 import { ymdToUtcDate } from '../benefit-subscriptions/installments';
+import { AgentCreateClinicalAppointmentDto } from './dto/agent-create-clinical-appointment.dto';
+import { CheckScheduleRulesDto } from './dto/check-schedule-rules.dto';
 import {
   BenefitEntitlementUseDto,
   CreateClinicalAppointmentDto,
@@ -88,6 +96,7 @@ export class ClinicalAppointmentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly healthProfessionalsService: HealthProfessionalsService,
+    private readonly scheduleRulesService: ScheduleRulesService,
   ) {}
 
   private scopeListQuery(
@@ -140,8 +149,8 @@ export class ClinicalAppointmentsService {
     return user.healthProfessionalId;
   }
 
-  async create(createDto: CreateClinicalAppointmentDto, user: JwtPayload) {
-    if (user.role === UserRole.PROFESSIONAL) {
+  async create(createDto: CreateClinicalAppointmentDto, user: AuthPrincipal) {
+    if (!isServicePrincipal(user) && user.role === UserRole.PROFESSIONAL) {
       createDto.healthProfessionalId = this.requireProfessionalId(user);
     }
     await this.ensurePatientExists(createDto.patientId);
@@ -210,6 +219,88 @@ export class ClinicalAppointmentsService {
         include: appointmentInclude,
       });
     });
+  }
+
+  async checkScheduleRules(dto: CheckScheduleRulesDto, user: JwtPayload) {
+    const healthProfessionalId =
+      user.role === UserRole.PROFESSIONAL
+        ? this.requireProfessionalId(user)
+        : dto.healthProfessionalId;
+    const scheduledAt = new Date(dto.scheduledAt);
+    const endsAt = new Date(dto.endsAt);
+    this.ensureValidInterval(scheduledAt, endsAt);
+    const resolved = await this.resolveProcedureLines({
+      patientId: dto.patientId,
+      healthProfessionalId,
+      procedureIds: dto.procedureIds ?? [],
+      patientPackageItemIds: dto.patientPackageItemIds ?? [],
+      insuranceGuideIds: dto.insuranceGuideIds ?? [],
+      benefitUses: dto.benefitUses ?? [],
+      onYmd: todayYmdSaoPaulo(scheduledAt),
+      consumeNow: false,
+      excludeAppointmentId: dto.excludeAppointmentId,
+    });
+    const warnings = await this.scheduleRulesService.evaluate({
+      healthProfessionalId,
+      procedureIds: resolved.lines.map((line) => line.procedureId),
+      scheduledAt,
+      endsAt,
+      excludeAppointmentId: dto.excludeAppointmentId,
+    });
+    return { warnings };
+  }
+
+  async createForAgent(
+    dto: AgentCreateClinicalAppointmentDto,
+    user: AuthPrincipal,
+  ) {
+    if (!isServicePrincipal(user) && user.role === UserRole.PROFESSIONAL) {
+      dto.healthProfessionalId = this.requireProfessionalId(user);
+    }
+    await this.ensurePatientExists(dto.patientId);
+    await this.ensureHealthProfessionalExists(dto.healthProfessionalId);
+    const scheduledAt = new Date(dto.scheduledAt);
+    const resolved = await this.resolveProcedureLines({
+      patientId: dto.patientId,
+      healthProfessionalId: dto.healthProfessionalId,
+      procedureIds: dto.procedureIds ?? [],
+      patientPackageItemIds: dto.patientPackageItemIds ?? [],
+      insuranceGuideIds: dto.insuranceGuideIds ?? [],
+      benefitUses: dto.benefitUses ?? [],
+      onYmd: todayYmdSaoPaulo(scheduledAt),
+      consumeNow: false,
+    });
+    const prepared = await this.scheduleRulesService.resolveEndsAt({
+      healthProfessionalId: dto.healthProfessionalId,
+      procedureIds: resolved.lines.map((line) => line.procedureId),
+      scheduledAt,
+      endsAt: dto.endsAt ? new Date(dto.endsAt) : null,
+    });
+    assertAgentMayBook(prepared.warnings);
+    const created = await this.create(
+      { ...dto, endsAt: prepared.endsAt.toISOString() },
+      user,
+    );
+    return {
+      id: created.id,
+      patientId: created.patientId,
+      healthProfessionalId: created.healthProfessionalId,
+      scheduledAt: created.scheduledAt,
+      endsAt: created.endsAt,
+      status: created.status,
+      type: created.type,
+      notes: created.notes,
+      patient: { id: created.patient.id, name: created.patient.name },
+      healthProfessional: {
+        id: created.healthProfessional.id,
+        name: created.healthProfessional.name,
+      },
+      procedures: created.procedures.map((item) => ({
+        id: item.procedure.id,
+        name: item.procedure.name,
+        origin: item.origin,
+      })),
+    };
   }
 
   findAll(query: ListClinicalAppointmentsQueryDto, user: JwtPayload) {

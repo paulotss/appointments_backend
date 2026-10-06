@@ -15,7 +15,9 @@ import {
   buildListMeta,
   ListEnvelope,
 } from '../common/pagination/list-envelope';
+import { BenefitSubscriptionsService } from '../benefit-subscriptions/benefit-subscriptions.service';
 import { decimalToNumber } from '../finance/money';
+import { PatientPackagesService } from '../patient-packages/patient-packages.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   AgentCatalogType,
@@ -28,10 +30,12 @@ import {
   ListInsuranceGuidesAgentQueryDto,
   ListMessagesAgentQueryDto,
   ListPayablesAgentQueryDto,
+  ListProcedurePackagesAgentQueryDto,
   ListProceduresAgentQueryDto,
   ListProductsAgentQueryDto,
   ListStockBatchesAgentQueryDto,
   ListStockExitsAgentQueryDto,
+  PatientScopeAgentQueryDto,
   SearchQueryDto,
 } from './dto/agent-data-query.dto';
 
@@ -76,7 +80,11 @@ function dateRange(
 
 @Injectable()
 export class AgentDataService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly patientPackagesService: PatientPackagesService,
+    private readonly benefitSubscriptionsService: BenefitSubscriptionsService,
+  ) {}
 
   async getOverview() {
     const today = todayYmdSaoPaulo();
@@ -229,9 +237,6 @@ export class AgentDataService {
         select: {
           id: true,
           name: true,
-          cpf: true,
-          phone: true,
-          email: true,
           birthDate: true,
         },
       }),
@@ -246,9 +251,6 @@ export class AgentDataService {
       select: {
         id: true,
         name: true,
-        cpf: true,
-        phone: true,
-        email: true,
         birthDate: true,
         insuranceCards: {
           orderBy: { id: 'asc' },
@@ -287,7 +289,6 @@ export class AgentDataService {
         select: {
           id: true,
           name: true,
-          cpf: true,
           councilType: true,
           councilNumber: true,
           isActive: true,
@@ -302,7 +303,6 @@ export class AgentDataService {
       data.map((item) => ({
         id: item.id,
         name: item.name,
-        cpf: item.cpf,
         councilType: item.councilType,
         councilNumber: item.councilNumber,
         isActive: item.isActive,
@@ -320,9 +320,6 @@ export class AgentDataService {
       select: {
         id: true,
         name: true,
-        cpf: true,
-        phone: true,
-        email: true,
         councilType: true,
         councilNumber: true,
         councilUf: true,
@@ -389,7 +386,7 @@ export class AgentDataService {
         status: true,
         type: true,
         notes: true,
-        patient: { select: { id: true, name: true, phone: true } },
+        patient: { select: { id: true, name: true } },
         healthProfessional: { select: { id: true, name: true } },
         procedures: {
           select: { procedure: { select: { id: true, name: true } } },
@@ -552,7 +549,6 @@ export class AgentDataService {
         select: {
           id: true,
           clientName: true,
-          phone: true,
           date: true,
           scheduled: true,
           firstTime: true,
@@ -1160,6 +1156,115 @@ export class AgentDataService {
           select: { id: true, name: true },
         });
     }
+  }
+
+  async listProcedurePackages(query: ListProcedurePackagesAgentQueryDto) {
+    const { page, limit, skip } = paginate(query.page, query.limit);
+    const where: Prisma.ProcedurePackageWhereInput = {
+      isActive: query.isActive ?? true,
+      ...(query.q && { name: { contains: query.q, mode: 'insensitive' } }),
+    };
+    const [data, total] = await Promise.all([
+      this.prisma.procedurePackage.findMany({
+        where,
+        orderBy: { id: 'asc' },
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          name: true,
+          discountPercent: true,
+          isActive: true,
+          items: {
+            orderBy: { id: 'asc' },
+            select: {
+              quantity: true,
+              procedure: { select: { id: true, name: true } },
+            },
+          },
+        },
+      }),
+      this.prisma.procedurePackage.count({ where }),
+    ]);
+    return this.envelope(
+      data.map((item) => ({
+        id: item.id,
+        name: item.name,
+        discountPercent: decimalToNumber(item.discountPercent),
+        isActive: item.isActive,
+        items: item.items.map((row) => ({
+          procedureId: row.procedure.id,
+          procedureName: row.procedure.name,
+          quantity: row.quantity,
+        })),
+      })),
+      page,
+      limit,
+      total,
+    );
+  }
+
+  async listPatientPackages(query: PatientScopeAgentQueryDto) {
+    const records = await this.patientPackagesService.findAll({
+      patientId: query.patientId,
+    });
+    return records.map((record) => ({
+      id: record.id,
+      status: record.status,
+      assignedAt: record.assignedAt,
+      patient: { id: record.patient.id, name: record.patient.name },
+      package: { id: record.package.id, name: record.package.name },
+      items: record.items.map((item) => ({
+        id: item.id,
+        procedureId: item.procedureId,
+        procedureName: item.procedure.name,
+        quantity: item.quantity,
+        usedQuantity: item.usedQuantity,
+        reservedQuantity: item.reservedQuantity,
+        remainingQuantity: item.remainingQuantity,
+      })),
+    }));
+  }
+
+  async listBenefitSubscriptions(query: PatientScopeAgentQueryDto) {
+    const records = await this.benefitSubscriptionsService.findAll({
+      patientId: query.patientId,
+    });
+    return records.map((record) => ({
+      id: record.id,
+      cardNumber: record.cardNumber,
+      status: record.status,
+      startsAt: record.startsAt,
+      expiresAt: record.expiresAt,
+      isCurrent: record.isCurrent,
+      role:
+        record.patientId === query.patientId
+          ? ('holder' as const)
+          : ('dependent' as const),
+      plan: { id: record.plan.id, name: record.plan.name },
+      patient: { id: record.patient.id, name: record.patient.name },
+      dependents: record.dependents.map((item) => ({
+        id: item.patient.id,
+        name: item.patient.name,
+      })),
+      entitlements: record.entitlements.map((item) => ({
+        id: item.id,
+        title: item.title,
+        kind: item.kind,
+        quantity: item.quantity,
+        usedQuantity: item.usedQuantity,
+        reservedQuantity: item.reservedQuantity,
+        remainingQuantity: item.remainingQuantity,
+        discountPercent:
+          item.discountPercent == null
+            ? null
+            : decimalToNumber(item.discountPercent),
+        procedures: item.procedures.map((row) => ({
+          id: row.procedure.id,
+          name: row.procedure.name,
+        })),
+      })),
+    }));
   }
 
   patientSearchWhere(q?: string): Prisma.PatientWhereInput {

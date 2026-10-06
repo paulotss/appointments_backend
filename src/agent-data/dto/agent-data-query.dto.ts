@@ -395,3 +395,40 @@ export class ListCatalogAgentQueryDto {
   @IsEnum(AgentCatalogType)
   type!: AgentCatalogType;
 }
+
+export class PatientScopeAgentQueryDto {
+  @ApiProperty({ example: 1 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  patientId!: number;
+}
+
+export class ListProcedurePackagesAgentQueryDto extends AgentDataPaginationDto {
+  @ApiPropertyOptional({ example: 'Acupuntura' })
+  @IsOptional()
+  @IsString()
+  q?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @Transform(toOptionalBoolean)
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class AvailableSlotsAgentQueryDto {
+  @ApiProperty({ example: 4 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  procedureId!: number;
+
+  @ApiProperty({ example: '2026-10-06' })
+  @IsDateString()
+  from!: string;
+
+  @ApiProperty({ example: '2026-10-06' })
+  @IsDateString()
+  to!: string;
+}

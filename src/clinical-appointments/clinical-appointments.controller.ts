@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   ParseIntPipe,
   Patch,
@@ -15,6 +16,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { AGENDA_ROLES, CLINICAL_STAFF_ROLES } from '../auth/roles';
 import { ClinicalAppointmentsService } from './clinical-appointments.service';
+import { CheckScheduleRulesDto } from './dto/check-schedule-rules.dto';
 import { CreateClinicalAppointmentDto } from './dto/create-clinical-appointment.dto';
 import { ListClinicalAppointmentsQueryDto } from './dto/list-clinical-appointments-query.dto';
 import { UpdateClinicalAppointmentDto } from './dto/update-clinical-appointment.dto';
@@ -38,6 +40,20 @@ export class ClinicalAppointmentsController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.clinicalAppointmentsService.create(createDto, user);
+  }
+
+  @Post('rule-check')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Conferir regras de atendimento sem gravar',
+    description:
+      'Devolve avisos quando o horário foge da ficha do profissional. A marcação manual não é bloqueada.',
+  })
+  checkRules(
+    @Body() dto: CheckScheduleRulesDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.clinicalAppointmentsService.checkScheduleRules(dto, user);
   }
 
   @Get()

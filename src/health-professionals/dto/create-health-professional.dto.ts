@@ -13,6 +13,7 @@ import {
 } from 'class-validator';
 import { BRAZILIAN_UFS } from '../../common/brazilian-uf';
 import { HealthProfessionalSpecialtyInputDto } from './health-professional-specialty-input.dto';
+import { ScheduleRuleInputDto } from './schedule-rule-input.dto';
 import { WeeklyBlockInputDto } from './weekly-block-input.dto';
 
 export class CreateHealthProfessionalDto {
@@ -61,4 +62,11 @@ export class CreateHealthProfessionalDto {
   @ValidateNested({ each: true })
   @Type(() => WeeklyBlockInputDto)
   weeklyBlocks?: WeeklyBlockInputDto[];
+
+  @ApiPropertyOptional({ type: [ScheduleRuleInputDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ScheduleRuleInputDto)
+  scheduleRules?: ScheduleRuleInputDto[];
 }

@@ -23,7 +23,7 @@ describe('AgentDataService', () => {
     product: { findMany: jest.fn() },
     stockBatch: { count: jest.fn() },
   };
-  const service = new AgentDataService(prisma as never);
+  const service = new AgentDataService(prisma as never, {} as never, {} as never);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -103,9 +103,6 @@ describe('AgentDataService', () => {
       {
         id: 9,
         name: 'Maria',
-        cpf: '12345678901',
-        phone: '1199999',
-        email: null,
         birthDate: null,
       },
     ]);
@@ -128,8 +125,18 @@ describe('AgentDataService', () => {
         },
         take: 10,
         skip: 0,
+        select: {
+          id: true,
+          name: true,
+          birthDate: true,
+        },
       }),
     );
+    expect(result.data[0]).toEqual({
+      id: 9,
+      name: 'Maria',
+      birthDate: null,
+    });
     expect(result.meta).toEqual({
       page: 1,
       limit: 10,
