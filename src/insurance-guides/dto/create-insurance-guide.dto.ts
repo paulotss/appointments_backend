@@ -56,6 +56,16 @@ export class CreateInsuranceGuideDto {
   guideNumber?: string;
 
   @ApiPropertyOptional({
+    example: 'ABC123',
+    description:
+      'Senha de autorizacao da guia (ate 20 caracteres). Enviada no XML TISS de SP/SADT.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  authorizationPassword?: string | null;
+
+  @ApiPropertyOptional({
     example: '2026-09-01',
     description:
       'Data de autorizacao da guia (YYYY-MM-DD). Se omitida, usa a data de hoje',

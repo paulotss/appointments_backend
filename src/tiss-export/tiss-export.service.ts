@@ -108,6 +108,7 @@ export class TissExportService {
         guide.healthProfessional,
         errors,
         label,
+        kind,
       );
 
       const used = guide.procedures.filter((item) => item.usedQuantity > 0);
@@ -146,6 +147,10 @@ export class TissExportService {
         guideNumber,
         cardNumber,
         authorizationDate: formatDateOnly(guide.authorizationDate),
+        authorizationPassword: guide.authorizationPassword?.trim() || null,
+        expirationDate: guide.expirationDate
+          ? formatDateOnly(guide.expirationDate)
+          : '',
         attendanceDate,
         professional,
         procedures,
@@ -220,17 +225,23 @@ export class TissExportService {
       councilNumber: string;
       councilUf: string | null;
       cbosCode: string | null;
+      cpf?: string | null;
     },
     errors: string[],
     label: string,
+    kind: TissGuideType | null,
   ): TissProfessionalData {
     const councilUf = professional.councilUf?.trim().toUpperCase() ?? '';
     const cbosCode = professional.cbosCode?.replace(/\D/g, '') ?? '';
+    const cpf = professional.cpf?.replace(/\D/g, '') ?? '';
     if (!isBrazilianUf(councilUf)) {
       errors.push(`Guia ${label}: informe a UF do conselho do profissional.`);
     }
     if (cbosCode.length !== 6) {
       errors.push(`Guia ${label}: informe o CBO-S do profissional (6 dígitos).`);
+    }
+    if (kind === TissGuideType.sp_sadt && cpf.length !== 11) {
+      errors.push(`Guia ${label}: informe o CPF do profissional.`);
     }
     return {
       name: professional.name,
@@ -238,6 +249,7 @@ export class TissExportService {
       councilNumber: professional.councilNumber.trim(),
       councilUf,
       cbosCode,
+      cpf,
     };
   }
 

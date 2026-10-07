@@ -67,7 +67,7 @@ export class GuideImportsController {
   @ApiOperation({
     summary: 'Confirmar importacao da guia',
     description:
-      'Cria o paciente e a carteirinha se necessario e cadastra a guia. Plano, profissional e procedimento precisam ja existir. usedQuantity em cada procedimento grava uso sem agendamento e so e aceito para admin.',
+      'Cria o paciente e a carteirinha se necessario e cadastra a guia. Plano, profissional e procedimento precisam ja existir. sessionDates em cada procedimento registra sessoes realizadas para admin e colaborador. usedQuantity grava uso sem agendamento e so e aceito para admin.',
   })
   commit(@Body() dto: CommitGuideImportDto, @CurrentUser() user: JwtPayload) {
     return this.guideImportsService.commit(dto, user);

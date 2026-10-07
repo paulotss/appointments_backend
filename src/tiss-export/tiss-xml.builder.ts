@@ -35,6 +35,22 @@ function prestadorId(xml: XmlBuilder, payload: TissLotePayload): string {
   return xml.leaf('codigoPrestadorNaOperadora', codigoReferenciado(payload));
 }
 
+function equipeSadt(xml: XmlBuilder, professional: TissProfessionalData): string {
+  return xml.branch('equipeSadt', [
+    xml.branch('codProfissional', [
+      xml.leaf('cpfContratado', professional.cpf),
+    ]),
+    xml.leaf('nomeProf', professional.name),
+    xml.leaf(
+      'conselho',
+      COUNCIL_TYPE_TO_TISS[professional.councilType] ?? '10',
+    ),
+    xml.leaf('numeroConselhoProfissional', professional.councilNumber),
+    xml.leaf('UF', toTissUfCode(professional.councilUf)),
+    xml.leaf('CBOS', professional.cbosCode),
+  ]);
+}
+
 function profissionalTags(xml: XmlBuilder, professional: TissProfessionalData): string[] {
   return [
     xml.leaf('nomeProfissional', professional.name),
@@ -110,6 +126,12 @@ function guiaSpSadt(xml: XmlBuilder, payload: TissLotePayload, guide: TissGuideD
     ]),
     xml.branch('dadosAutorizacao', [
       xml.leaf('dataAutorizacao', guide.authorizationDate),
+      ...(guide.authorizationPassword
+        ? [xml.leaf('senha', guide.authorizationPassword)]
+        : []),
+      ...(guide.expirationDate
+        ? [xml.leaf('dataValidadeSenha', guide.expirationDate)]
+        : []),
     ]),
     xml.branch('dadosBeneficiario', [
       xml.leaf('numeroCarteira', guide.cardNumber),
@@ -152,6 +174,7 @@ function guiaSpSadt(xml: XmlBuilder, payload: TissLotePayload, guide: TissGuideD
           xml.leaf('reducaoAcrescimo', TISS_REDUCAO_ACRESCIMO),
           xml.leaf('valorUnitario', formatTissDecimal(item.unitValue)),
           xml.leaf('valorTotal', formatTissDecimal(item.unitValue * item.quantity)),
+          equipeSadt(xml, guide.professional),
         ]),
       ),
     ),

@@ -1,6 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsNumber, IsOptional, Min } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  Matches,
+  Min,
+} from 'class-validator';
 
 export class InsuranceGuideProcedureInputDto {
   @ApiProperty({ example: 1 })
@@ -28,6 +36,18 @@ export class InsuranceGuideProcedureInputDto {
   @IsInt()
   @Min(0)
   usedQuantity?: number;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['2026-09-01', '2026-09-08'],
+    description:
+      'Datas das sessoes realizadas (YYYY-MM-DD). Admin e colaborador. Cada data vira um agendamento finalizado.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(366)
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { each: true })
+  sessionDates?: string[];
 
   @ApiPropertyOptional({
     example: 80.0,

@@ -20,6 +20,7 @@ export interface TissProfessionalData {
   councilNumber: string;
   councilUf: string;
   cbosCode: string;
+  cpf: string;
 }
 
 export interface TissProcedureItem {
@@ -36,6 +37,8 @@ export interface TissGuideData {
   guideNumber: string;
   cardNumber: string;
   authorizationDate: string;
+  authorizationPassword: string | null;
+  expirationDate: string;
   attendanceDate: string;
   professional: TissProfessionalData;
   procedures: TissProcedureItem[];

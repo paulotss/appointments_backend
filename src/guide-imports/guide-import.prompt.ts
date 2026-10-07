@@ -22,6 +22,7 @@ const JSON_SHAPE = `{
     "operatorGuideNumber": string | null,
     "providerGuideNumber": string | null,
     "authorizationDate": string | null,
+    "authorizationPassword": string | null,
     "passwordExpirationDate": string | null,
     "attendanceDate": string | null
   }
@@ -39,6 +40,7 @@ const FIELD_RULES = `Regras (obrigatórias):
 - providerGuideNumber = campo 2 (Nº Guia no Prestador; na CASSI fica no canto superior direito). operatorGuideNumber = campo 3 (Número da Guia atribuído pela operadora). Extraia os dois sempre que ambos existirem; não omita o campo 2.
 - attendanceDate = campo 18 (Data do Atendimento), formato YYYY-MM-DD.
 - authorizationDate = data de autorização se estiver preenchida; se não houver, use a data do atendimento.
+- authorizationPassword = senha de autorização impressa (rótulo "Senha", campo numérico ou alfanumérico de até 20 caracteres). NÃO use a validade da senha, a validade da carteira nem o número da guia. null se estiver em branco.
 - passwordExpirationDate = validade da senha/autorização. NÃO use a validade da carteira e não invente data.
 - tissGuideType: "consulta" ou "sp_sadt" conforme o TIPO do documento, nunca como nome de plano.`;
 

@@ -2,6 +2,7 @@ import { InsuranceGuideStatus } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsDateString,
@@ -10,6 +11,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
   MinLength,
@@ -40,6 +42,18 @@ export class CommitGuideImportProcedureDto {
   @IsInt()
   @Min(0)
   usedQuantity?: number;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['2026-09-01', '2026-09-08'],
+    description:
+      'Datas das sessoes realizadas (YYYY-MM-DD). Admin e colaborador.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(366)
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { each: true })
+  sessionDates?: string[];
 }
 
 export class CommitGuideImportPatientDto {
@@ -132,6 +146,15 @@ export class CommitGuideImportDto {
   @IsOptional()
   @IsDateString()
   authorizationDate?: string;
+
+  @ApiPropertyOptional({
+    example: 'ABC123',
+    description: 'Senha de autorizacao da guia (ate 20 caracteres).',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  authorizationPassword?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
