@@ -61,6 +61,17 @@ export class UpdateInsuranceGuideDto {
   guideNumber?: string | null;
 
   @ApiPropertyOptional({
+    example: 'ABC123',
+    nullable: true,
+    description:
+      'Senha de autorizacao da guia (ate 20 caracteres). Envie null para limpar.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  authorizationPassword?: string | null;
+
+  @ApiPropertyOptional({
     example: '2026-09-01',
     description: 'Data de autorizacao da guia (YYYY-MM-DD)',
   })

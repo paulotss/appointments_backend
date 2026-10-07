@@ -412,9 +412,10 @@ model InsuranceGuide {
   healthPlanId         Int                        @map("health_plan_id")
   patientId            Int                        @map("patient_id")
   healthProfessionalId Int                        @map("health_professional_id")
-  guideNumber          String?                    @unique @map("guide_number") @db.VarChar(50)
-  authorizationDate    DateTime                   @map("authorization_date") @db.Date
-  expirationDate       DateTime                   @map("expiration_date") @db.Date
+  guideNumber            String?                    @unique @map("guide_number") @db.VarChar(50)
+  authorizationPassword  String?                    @map("authorization_password") @db.VarChar(20)
+  authorizationDate      DateTime                   @map("authorization_date") @db.Date
+  expirationDate         DateTime                   @map("expiration_date") @db.Date
   isBilled             Boolean                    @default(false) @map("is_billed")
   status               InsuranceGuideStatus       @default(pending)
   tissGuideType        TissGuideType?             @map("tiss_guide_type")

@@ -33,6 +33,7 @@ export type ExtractedGuideMeta = {
   operatorGuideNumber: string | null;
   providerGuideNumber: string | null;
   authorizationDate: string | null;
+  authorizationPassword: string | null;
   passwordExpirationDate: string | null;
   attendanceDate: string | null;
 };
@@ -81,6 +82,17 @@ const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export function digitsOnly(value: string): string {
   return value.replace(/\D/g, '');
+}
+
+export function normalizeAuthorizationPassword(value: unknown): string | null {
+  const text = nullableText(value);
+  if (!text) return null;
+  const compact = text.trim();
+  if (compact.length === 0 || compact.length > 20) return null;
+  if (/senha/i.test(compact)) return null;
+  if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(compact)) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(compact)) return null;
+  return compact;
 }
 
 export function nullableText(value: unknown): string | null {
@@ -260,6 +272,7 @@ export function emptyExtractedGuide(): ExtractedGuide {
       operatorGuideNumber: null,
       providerGuideNumber: null,
       authorizationDate: null,
+      authorizationPassword: null,
       passwordExpirationDate: null,
       attendanceDate: null,
     },
@@ -367,6 +380,9 @@ export function sanitizeExtractedGuide(input: unknown): ExtractedGuide {
       operatorGuideNumber: nullableText(guide.operatorGuideNumber),
       providerGuideNumber: nullableText(guide.providerGuideNumber),
       authorizationDate: isoDateOrNull(guide.authorizationDate),
+      authorizationPassword: normalizeAuthorizationPassword(
+        guide.authorizationPassword,
+      ),
       passwordExpirationDate: isoDateOrNull(guide.passwordExpirationDate),
       attendanceDate: isoDateOrNull(guide.attendanceDate),
     },

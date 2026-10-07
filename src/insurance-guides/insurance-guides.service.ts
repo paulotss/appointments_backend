@@ -5,17 +5,38 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, TissGuideType, UserRole } from '@prisma/client';
+import {
+  ClinicalAppointmentProcedureOrigin,
+  ClinicalAppointmentStatus,
+  ClinicalAppointmentType,
+  Prisma,
+  ScheduleExceptionKind,
+  TissGuideType,
+  UserRole,
+} from '@prisma/client';
+import {
+  addCalendarDaysYmd,
+  saoPauloClock,
+  startOfDaySaoPaulo,
+  todayYmdSaoPaulo,
+  weekdayFromYmd,
+} from '../common/datetime/sao-paulo-day-bounds';
 import {
   buildListMeta,
   ListEnvelope,
 } from '../common/pagination/list-envelope';
+import { resolveEffectiveBlocks } from '../health-professionals/schedule-intervals';
 import { PrismaService } from '../prisma/prisma.service';
 import { FileStorageService } from '../uploads/file-storage.service';
 import { UploadedFile } from '../uploads/uploaded-file';
 import { CreateInsuranceGuideDto } from './dto/create-insurance-guide.dto';
 import { guideDocumentFileName } from './guide-document-name';
 import { InsuranceGuideProcedureInputDto } from './dto/insurance-guide-procedure-input.dto';
+import {
+  DEFAULT_SESSION_DURATION_MINUTES,
+  groupGuideSessions,
+  nextFreeMinute,
+} from './guide-session-schedule';
 import { ListInsuranceGuidesQueryDto } from './dto/list-insurance-guides-query.dto';
 import { UpdateInsuranceGuideDto } from './dto/update-insurance-guide.dto';
 
@@ -53,11 +74,47 @@ export class InsuranceGuidesService {
     tx?: Prisma.TransactionClient,
     currentUser?: { role: UserRole },
   ) {
-    this.assertManualUsedQuantity(
-      createInsuranceGuideDto.procedures,
+    const hasSessions = this.hasSessionDates(createInsuranceGuideDto.procedures);
+    if (tx) {
+      return this.persistCreate(createInsuranceGuideDto, tx, currentUser, hasSessions);
+    }
+    if (hasSessions) {
+      return this.prisma.$transaction((inner) =>
+        this.persistCreate(createInsuranceGuideDto, inner, currentUser, true),
+      );
+    }
+    return this.persistCreate(
+      createInsuranceGuideDto,
+      this.prisma,
       currentUser,
+      false,
     );
-    const db: GuideDb = tx ?? this.prisma;
+  }
+
+  private async persistCreate(
+    createInsuranceGuideDto: CreateInsuranceGuideDto,
+    db: GuideDb,
+    currentUser: { role: UserRole } | undefined,
+    hasSessions: boolean,
+  ) {
+    if (!hasSessions) {
+      this.assertManualUsedQuantity(
+        createInsuranceGuideDto.procedures,
+        currentUser,
+      );
+    }
+    const authorizationDate =
+      createInsuranceGuideDto.authorizationDate !== undefined
+        ? new Date(createInsuranceGuideDto.authorizationDate)
+        : this.startOfUtcDay();
+    if (hasSessions) {
+      this.assertSessionDates(
+        createInsuranceGuideDto.procedures,
+        authorizationDate.toISOString().slice(0, 10),
+        todayYmdSaoPaulo(),
+        currentUser,
+      );
+    }
     const healthPlan = await this.ensureHealthPlanExists(
       createInsuranceGuideDto.healthPlanId,
       db,
@@ -77,23 +134,22 @@ export class InsuranceGuidesService {
         db,
       );
 
-    const authorizationDate =
-      createInsuranceGuideDto.authorizationDate !== undefined
-        ? new Date(createInsuranceGuideDto.authorizationDate)
-        : this.startOfUtcDay();
     const expirationDate =
       createInsuranceGuideDto.expirationDate !== undefined
         ? new Date(createInsuranceGuideDto.expirationDate)
         : this.addUtcDays(authorizationDate, healthPlan.submissionDeadlineDays);
 
     try {
-      return await db.insuranceGuide.create({
+      const created = await db.insuranceGuide.create({
         data: {
           healthPlanId: createInsuranceGuideDto.healthPlanId,
           patientId: createInsuranceGuideDto.patientId,
           healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
           authorizationDate,
           expirationDate,
+          authorizationPassword: this.normalizeAuthorizationPassword(
+            createInsuranceGuideDto.authorizationPassword,
+          ),
           tissGuideType,
           ...(createInsuranceGuideDto.guideNumber !== undefined && {
             guideNumber: this.normalizeGuideNumber(
@@ -107,11 +163,22 @@ export class InsuranceGuidesService {
             create: createInsuranceGuideDto.procedures.map((item) => ({
               procedureId: item.procedureId,
               authorizedQuantity: item.authorizedQuantity,
-              usedQuantity: item.usedQuantity ?? 0,
+              usedQuantity: hasSessions ? 0 : (item.usedQuantity ?? 0),
               value: item.value ?? procedureValues.get(item.procedureId)!,
             })),
           },
         },
+        include: guideInclude,
+      });
+      if (!hasSessions) return created;
+      await this.createFinishedSessions(db, {
+        insuranceGuideId: created.id,
+        patientId: createInsuranceGuideDto.patientId,
+        healthProfessionalId: createInsuranceGuideDto.healthProfessionalId,
+        procedures: createInsuranceGuideDto.procedures,
+      });
+      return db.insuranceGuide.findUniqueOrThrow({
+        where: { id: created.id },
         include: guideInclude,
       });
     } catch (error) {
@@ -275,6 +342,11 @@ export class InsuranceGuidesService {
                 updateInsuranceGuideDto.guideNumber,
               ),
             }),
+            ...(updateInsuranceGuideDto.authorizationPassword !== undefined && {
+              authorizationPassword: this.normalizeAuthorizationPassword(
+                updateInsuranceGuideDto.authorizationPassword,
+              ),
+            }),
             ...(updateInsuranceGuideDto.status !== undefined && {
               status: updateInsuranceGuideDto.status,
             }),
@@ -365,6 +437,228 @@ export class InsuranceGuidesService {
     return this.prisma.insuranceGuideDocument.delete({
       where: { id: documentId },
     });
+  }
+
+  private hasSessionDates(procedures: InsuranceGuideProcedureInputDto[]): boolean {
+    return procedures.some((item) => (item.sessionDates?.length ?? 0) > 0);
+  }
+
+  private assertSessionDates(
+    procedures: InsuranceGuideProcedureInputDto[],
+    authorizationYmd: string,
+    todayYmd: string,
+    currentUser?: { role: UserRole },
+  ) {
+    if (
+      currentUser?.role !== UserRole.ADMIN &&
+      currentUser?.role !== UserRole.RECEPTIONIST
+    ) {
+      throw new ForbiddenException(
+        'Only admins and receptionists can register realized sessions',
+      );
+    }
+
+    for (const item of procedures) {
+      const dates = item.sessionDates ?? [];
+      if (dates.length > item.authorizedQuantity) {
+        throw new BadRequestException(
+          `sessionDates for procedure ${item.procedureId} cannot exceed authorizedQuantity ${item.authorizedQuantity}`,
+        );
+      }
+      for (const date of dates) {
+        if (date < authorizationYmd || date > todayYmd) {
+          throw new BadRequestException(
+            `Session date ${date} for procedure ${item.procedureId} must be between the authorization date and today`,
+          );
+        }
+      }
+    }
+  }
+
+  private normalizeAuthorizationPassword(
+    value: string | null | undefined,
+  ): string | null {
+    if (value == null) return null;
+    const trimmed = value.trim();
+    return trimmed.length === 0 ? null : trimmed;
+  }
+
+  private async createFinishedSessions(
+    db: GuideDb,
+    params: {
+      insuranceGuideId: number;
+      patientId: number;
+      healthProfessionalId: number;
+      procedures: InsuranceGuideProcedureInputDto[];
+    },
+  ) {
+    const slots = groupGuideSessions(params.procedures);
+    if (slots.length === 0) return;
+
+    const procedureIds = [
+      ...new Set(slots.flatMap((slot) => slot.procedureIds)),
+    ];
+    const dates = [...new Set(slots.map((slot) => slot.date))].sort();
+    const first = dates[0]!;
+    const last = dates[dates.length - 1]!;
+    const [rules, weekly, exceptions, existing] = await Promise.all([
+      db.professionalScheduleRule.findMany({
+        where: {
+          healthProfessionalId: params.healthProfessionalId,
+          procedureId: { in: procedureIds },
+        },
+        select: { procedureId: true, durationMinutes: true },
+      }),
+      db.professionalWeeklyBlock.findMany({
+        where: { healthProfessionalId: params.healthProfessionalId },
+      }),
+      db.professionalDayException.findMany({
+        where: {
+          healthProfessionalId: params.healthProfessionalId,
+          date: {
+            gte: new Date(`${first}T00:00:00.000Z`),
+            lte: new Date(`${last}T00:00:00.000Z`),
+          },
+        },
+      }),
+      db.clinicalAppointment.findMany({
+        where: {
+          healthProfessionalId: params.healthProfessionalId,
+          status: { not: ClinicalAppointmentStatus.absent },
+          scheduledAt: { lt: startOfDaySaoPaulo(addCalendarDaysYmd(last, 1)) },
+          endsAt: { gt: startOfDaySaoPaulo(first) },
+        },
+        select: { scheduledAt: true, endsAt: true },
+      }),
+    ]);
+
+    const durationByProcedure = new Map(
+      rules.map((rule) => [rule.procedureId, rule.durationMinutes]),
+    );
+    const occupied = new Map<string, Array<{ start: number; end: number }>>();
+    for (const appointment of existing) {
+      this.addOccupiedInterval(
+        occupied,
+        appointment.scheduledAt,
+        appointment.endsAt,
+      );
+    }
+
+    for (const slot of slots) {
+      const duration = Math.max(
+        ...slot.procedureIds.map(
+          (procedureId) =>
+            durationByProcedure.get(procedureId) ??
+            DEFAULT_SESSION_DURATION_MINUTES,
+        ),
+      );
+      const minute = nextFreeMinute({
+        durationMinutes: duration,
+        occupiedMinutes: occupied.get(slot.date) ?? [],
+        blockedMinutes: this.blocksForDate(slot.date, weekly, exceptions),
+      });
+      if (minute == null) {
+        throw new BadRequestException(
+          `No free time on ${slot.date} to register the guide session`,
+        );
+      }
+      const scheduledAt = new Date(
+        startOfDaySaoPaulo(slot.date).getTime() + minute * 60_000,
+      );
+      const endsAt = new Date(scheduledAt.getTime() + duration * 60_000);
+      this.addOccupiedInterval(occupied, scheduledAt, endsAt);
+
+      await db.clinicalAppointment.create({
+        data: {
+          patientId: params.patientId,
+          healthProfessionalId: params.healthProfessionalId,
+          scheduledAt,
+          endsAt,
+          status: ClinicalAppointmentStatus.finished,
+          type: ClinicalAppointmentType.health_plan,
+          notes: 'Sessão registrada a partir da guia',
+          insuranceGuides: {
+            create: [{ insuranceGuideId: params.insuranceGuideId }],
+          },
+          procedures: {
+            create: slot.procedureIds.map((procedureId) => ({
+              procedureId,
+              origin: ClinicalAppointmentProcedureOrigin.health_plan,
+              insuranceGuideId: params.insuranceGuideId,
+            })),
+          },
+        },
+      });
+
+      for (const procedureId of slot.procedureIds) {
+        const rows = await db.$executeRaw`
+          UPDATE "insurance_guide_procedures"
+          SET "used_quantity" = "used_quantity" + 1
+          WHERE "insurance_guide_id" = ${params.insuranceGuideId}
+            AND "procedure_id" = ${procedureId}
+            AND "used_quantity" < "authorized_quantity"
+        `;
+        if (rows === 0) {
+          throw new BadRequestException(
+            `Procedure ${procedureId} has no remaining quantity on insurance guide ${params.insuranceGuideId}`,
+          );
+        }
+      }
+    }
+  }
+
+  private blocksForDate(
+    date: string,
+    weekly: Array<{ weekday: number; startMinute: number; endMinute: number }>,
+    exceptions: Array<{
+      date: Date;
+      kind: ScheduleExceptionKind;
+      startMinute: number;
+      endMinute: number;
+    }>,
+  ) {
+    const weekday = weekdayFromYmd(date);
+    const ofDay = exceptions.filter(
+      (item) => item.date.toISOString().slice(0, 10) === date,
+    );
+    return resolveEffectiveBlocks({
+      weekly: weekly
+        .filter((item) => item.weekday === weekday)
+        .map((item) => ({
+          startMinute: item.startMinute,
+          endMinute: item.endMinute,
+        })),
+      releases: ofDay
+        .filter((item) => item.kind === ScheduleExceptionKind.release)
+        .map((item) => ({
+          startMinute: item.startMinute,
+          endMinute: item.endMinute,
+        })),
+      blocks: ofDay
+        .filter((item) => item.kind === ScheduleExceptionKind.block)
+        .map((item) => ({
+          startMinute: item.startMinute,
+          endMinute: item.endMinute,
+        })),
+    });
+  }
+
+  private addOccupiedInterval(
+    occupied: Map<string, Array<{ start: number; end: number }>>,
+    scheduledAt: Date,
+    endsAt: Date,
+  ) {
+    const start = saoPauloClock(scheduledAt);
+    const end = saoPauloClock(endsAt);
+    const endMinute = end.ymd === start.ymd ? end.minutes : 24 * 60;
+    const intervals = occupied.get(start.ymd) ?? [];
+    intervals.push({ start: start.minutes, end: endMinute });
+    occupied.set(start.ymd, intervals);
+    if (end.ymd !== start.ymd && end.minutes > 0) {
+      const next = occupied.get(end.ymd) ?? [];
+      next.push({ start: 0, end: end.minutes });
+      occupied.set(end.ymd, next);
+    }
   }
 
   private assertManualUsedQuantity(

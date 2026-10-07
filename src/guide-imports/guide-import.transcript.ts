@@ -3,6 +3,7 @@ import {
   digitsOnly,
   isoDateOrNull,
   mapCouncilType,
+  normalizeAuthorizationPassword,
   rejectLabelLikeName,
   sanitizeExtractedGuide,
   type ExtractedGuide,
@@ -167,6 +168,13 @@ export function completeExtractedGuideFromTranscript(
       ]),
     );
 
+  const authorizationPassword =
+    extracted.guide.authorizationPassword ??
+    normalizeAuthorizationPassword(
+      firstCapture(text, [
+        /(?:^|\n)\s*(?:5\s*[-.)]\s*)?senha\s*[:\-]?\s*([A-Za-z0-9][A-Za-z0-9./-]{0,19})/i,
+      ]),
+    );
   const authorizationDate =
     extracted.guide.authorizationDate ??
     isoDateOrNull(
@@ -212,6 +220,7 @@ export function completeExtractedGuideFromTranscript(
       operatorGuideNumber,
       providerGuideNumber,
       authorizationDate,
+      authorizationPassword,
       passwordExpirationDate,
       attendanceDate,
     },

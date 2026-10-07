@@ -95,6 +95,10 @@ export class ExtractedGuideMetaDto {
 
   @IsOptional()
   @IsString()
+  authorizationPassword?: string | null;
+
+  @IsOptional()
+  @IsString()
   passwordExpirationDate?: string | null;
 
   @IsOptional()

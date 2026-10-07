@@ -47,7 +47,7 @@ export class InsuranceGuidesController {
   @ApiOperation({
     summary: 'Criar guia de plano de saude',
     description:
-      'Cria a guia com status=pending e isBilled=false. O faturamento ocorre via lote (billing-batches) ou pela guia individual (POST /insurance-guides/:id/bill). Envie procedures com quantidade autorizada por item. authorizationDate, expirationDate e guideNumber sao opcionais: a autorizacao default e hoje e a validade default e autorizacao + prazo do plano. usedQuantity em cada procedimento grava uso sem agendamento e so e aceito para admin.',
+      'Cria a guia com status=pending e isBilled=false. O faturamento ocorre via lote (billing-batches) ou pela guia individual (POST /insurance-guides/:id/bill). Envie procedures com quantidade autorizada por item. authorizationDate, expirationDate, authorizationPassword e guideNumber sao opcionais: a autorizacao default e hoje e a validade default e autorizacao + prazo do plano. sessionDates em cada procedimento registra sessoes realizadas para admin e colaborador. usedQuantity grava uso sem agendamento e so e aceito para admin.',
   })
   create(
     @Body() createInsuranceGuideDto: CreateInsuranceGuideDto,

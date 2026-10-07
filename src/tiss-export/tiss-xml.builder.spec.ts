@@ -35,6 +35,8 @@ const basePayload: TissLotePayload = {
       guideNumber: 'G-1',
       cardNumber: '000111',
       authorizationDate: '2026-08-01',
+      authorizationPassword: null,
+      expirationDate: '2026-09-01',
       attendanceDate: '2026-08-10',
       professional: {
         name: 'DR CARLOS',
@@ -42,6 +44,7 @@ const basePayload: TissLotePayload = {
         councilNumber: '123456',
         councilUf: 'SP',
         cbosCode: '225142',
+        cpf: '12345678901',
       },
       procedures: [
         {
@@ -63,6 +66,8 @@ describe('buildLoteXml', () => {
     expect(xml).toContain('<ans:tipoTransacao>ENVIO_LOTE_GUIAS</ans:tipoTransacao>');
     expect(xml).toContain('<ans:Padrao>4.03.00</ans:Padrao>');
     expect(xml).toContain('<ans:guiaConsulta>');
+    expect(xml).not.toContain('<ans:senha>');
+    expect(xml).not.toContain('<ans:equipeSadt>');
     expect(xml).toContain('<ans:UF>35</ans:UF>');
     expect(xml).toContain(
       '<ans:dadosAtendimento>' +
@@ -126,6 +131,7 @@ describe('buildLoteXml', () => {
         {
           ...basePayload.guides[0]!,
           kind: TissGuideType.sp_sadt,
+          authorizationPassword: 'SENHA1',
           procedures: [
             {
               tissCode: '40304361',
@@ -146,6 +152,19 @@ describe('buildLoteXml', () => {
     expect(xml).toContain('<ans:quantidadeExecutada>2</ans:quantidadeExecutada>');
     expect(xml).toContain('<ans:valorTotal>81.00</ans:valorTotal>');
     expect(xml).toContain('<ans:valorTotalGeral>81.00</ans:valorTotalGeral>');
+    expect(xml).toContain('<ans:senha>SENHA1</ans:senha>');
+    expect(xml).toContain('<ans:dataValidadeSenha>2026-09-01</ans:dataValidadeSenha>');
+    expect(xml).toContain(
+      '<ans:equipeSadt>' +
+        '<ans:codProfissional><ans:cpfContratado>12345678901</ans:cpfContratado></ans:codProfissional>' +
+        '<ans:nomeProf>DR CARLOS</ans:nomeProf>' +
+        '<ans:conselho>06</ans:conselho>' +
+        '<ans:numeroConselhoProfissional>123456</ans:numeroConselhoProfissional>' +
+        '<ans:UF>35</ans:UF>' +
+        '<ans:CBOS>225142</ans:CBOS>' +
+        '</ans:equipeSadt>',
+    );
+    expect(xml).not.toContain('<ans:profissionalExecutante>');
   });
 });
 

@@ -74,6 +74,9 @@ export class GuideImportsService {
           ...(dto.authorizationDate !== undefined && {
             authorizationDate: dto.authorizationDate,
           }),
+          ...(dto.authorizationPassword !== undefined && {
+            authorizationPassword: dto.authorizationPassword,
+          }),
           ...(dto.expirationDate !== undefined && {
             expirationDate: dto.expirationDate,
           }),
