@@ -8,7 +8,9 @@ import {
   DEFAULT_HERMES_API_BASE_URL,
   DEFAULT_HERMES_PROFILE,
   hermesChatCompletionsUrl,
+  hermesSessionUrl,
   HermesGuideVisionProvider,
+  newHermesGuideSessionId,
   resolveHermesProfile,
 } from './hermes-guide-vision.provider';
 
@@ -79,6 +81,26 @@ describe('hermesChatCompletionsUrl', () => {
   });
 });
 
+describe('hermesSessionUrl', () => {
+  it('points at the profile session resource', () => {
+    expect(
+      hermesSessionUrl(
+        'guide-abc',
+        'https://hermes.paulodt.com.br',
+        'higia-colaboradores',
+      ),
+    ).toBe(
+      'https://hermes.paulodt.com.br/p/higia-colaboradores/api/sessions/guide-abc',
+    );
+  });
+});
+
+describe('newHermesGuideSessionId', () => {
+  it('creates a distinct id for each import', () => {
+    expect(newHermesGuideSessionId()).not.toBe(newHermesGuideSessionId());
+  });
+});
+
 describe('collectHermesMessageText', () => {
   it('joins text parts from an array content payload', () => {
     expect(
@@ -145,6 +167,7 @@ describe('HermesGuideVisionProvider', () => {
     process.env.HERMES_PROFILE = 'higia-colaboradores';
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
+      headers: { get: () => 'guide-echo' },
       text: async () =>
         JSON.stringify({
           choices: [
@@ -164,8 +187,13 @@ describe('HermesGuideVisionProvider', () => {
         method: 'POST',
         headers: expect.objectContaining({
           Authorization: 'Bearer test-key',
+          'X-Hermes-Session-Id': expect.stringMatching(/^guide-/),
         }),
       }),
+    );
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://hermes.paulodt.com.br/p/higia-colaboradores/api/sessions/guide-echo',
+      expect.objectContaining({ method: 'DELETE' }),
     );
     const body = JSON.parse(
       (global.fetch as jest.Mock).mock.calls[0][1].body as string,
@@ -209,6 +237,7 @@ describe('HermesGuideVisionProvider', () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
       status: 401,
+      headers: { get: () => null },
       text: async () => '{"error":{"message":"Invalid gateway API key"}}',
     }) as unknown as typeof fetch;
 
@@ -220,5 +249,12 @@ describe('HermesGuideVisionProvider', () => {
     ).rejects.toMatchObject({
       message: 'Hermes vision failed to extract guide data',
     });
+    const sessionId = (global.fetch as jest.Mock).mock.calls[0][1].headers[
+      'X-Hermes-Session-Id'
+    ] as string;
+    expect(global.fetch).toHaveBeenLastCalledWith(
+      expect.stringContaining(`/api/sessions/${sessionId}`),
+      expect.objectContaining({ method: 'DELETE' }),
+    );
   });
 });
