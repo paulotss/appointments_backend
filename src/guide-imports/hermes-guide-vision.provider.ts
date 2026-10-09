@@ -21,6 +21,18 @@ export const DEFAULT_HERMES_PROFILE = 'higia-colaboradores';
 
 const PDF_MESSAGE = 'Hermes guide vision accepts JPEG and PNG only';
 
+export const HERMES_VISION_TOOL_INSTRUCTION = `A imagem da guia já está anexada na mensagem do usuário, como data URL (data:image/...).
+
+Para ler a guia, use somente a ferramenta vision_analyze:
+- image_url: a data URL anexada. Não use caminho de disco, cache nem /proc.
+- question: transcrever todo o texto visível, no formato "Rótulo: valor".
+
+Chame vision_analyze no máximo duas vezes. A segunda chamada só pode ser um recorte (region) de um trecho ilegível.
+
+Não use terminal, read_file, write_file, search_files, execute_code nem qualquer outra ferramenta. Não procure arquivos, não instale pacotes e não rode código.
+
+Depois de ler a imagem, responda apenas o JSON pedido pelo usuário.`;
+
 type HermesMessageContent = string | Array<{ type?: string; text?: string }>;
 
 type HermesChatResponse = {
@@ -150,6 +162,10 @@ export class HermesGuideVisionProvider implements GuideVisionProvider {
         temperature: 0,
         stream: false,
         messages: [
+          {
+            role: 'system',
+            content: HERMES_VISION_TOOL_INSTRUCTION,
+          },
           {
             role: 'user',
             content: [
