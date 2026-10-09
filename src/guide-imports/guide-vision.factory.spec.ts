@@ -29,6 +29,11 @@ describe('resolveGuideVisionProviderKind', () => {
     expect(resolveGuideVisionProviderKind()).toBe('gemini');
   });
 
+  it('uses Hermes when explicitly configured', () => {
+    process.env.GUIDE_VISION_PROVIDER = 'hermes';
+    expect(resolveGuideVisionProviderKind()).toBe('hermes');
+  });
+
   it('falls back to OpenRouter when Ollama is configured', () => {
     process.env.GUIDE_VISION_PROVIDER = 'ollama';
     expect(resolveGuideVisionProviderKind()).toBe('openrouter');
