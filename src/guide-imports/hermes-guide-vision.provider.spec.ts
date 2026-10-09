@@ -200,11 +200,17 @@ describe('HermesGuideVisionProvider', () => {
     ) as {
       model: string;
       stream: boolean;
-      messages: Array<{ content: unknown[] }>;
+      messages: Array<{ role: string; content: unknown }>;
     };
     expect(body.model).toBe('higia-colaboradores');
     expect(body.stream).toBe(false);
-    expect(body.messages[0].content[1]).toEqual({
+    expect(body.messages[0]).toMatchObject({
+      role: 'system',
+      content: expect.stringContaining('vision_analyze'),
+    });
+    expect(String(body.messages[0].content)).toContain('Não use terminal');
+    const userContent = body.messages[1].content as unknown[];
+    expect(userContent[1]).toEqual({
       type: 'image_url',
       image_url: {
         url: `data:image/jpeg;base64,${Buffer.from('fake-image').toString('base64')}`,
