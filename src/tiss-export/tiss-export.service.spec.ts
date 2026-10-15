@@ -3,7 +3,11 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { BillingBatchStatus, TissGuideType } from '@prisma/client';
+import {
+  BillingBatchStatus,
+  ClinicalAppointmentStatus,
+  TissGuideType,
+} from '@prisma/client';
 import { TissExportService } from './tiss-export.service';
 
 describe('TissExportService.exportBatch', () => {
@@ -190,5 +194,95 @@ describe('TissExportService.exportBatch', () => {
     );
     expect(xml).toContain('<ans:codigoProcedimento>10101012</ans:codigoProcedimento>');
     expect(xml).toMatch(/<ans:hash>[a-f0-9]{32}<\/ans:hash>/);
+  });
+
+  it('emits one SP-SADT line per finished session', async () => {
+    const sessionDates = [
+      '2026-08-19',
+      '2026-08-10',
+      '2026-08-14',
+      '2026-08-12',
+      '2026-08-17',
+    ];
+    prisma.billingBatch.findUnique.mockResolvedValue({
+      id: 16,
+      status: BillingBatchStatus.billed,
+      batchNumber: '16-20260901',
+      healthPlanId: 3,
+      healthPlan: {
+        registroAns: '351033',
+        providerCode: '99999',
+        tissVersion: '4.03.00',
+      },
+      guides: [
+        {
+          insuranceGuide: {
+            id: 9,
+            guideNumber: 'G-ACU',
+            tissGuideType: TissGuideType.sp_sadt,
+            authorizationDate: new Date('2026-08-01T00:00:00.000Z'),
+            expirationDate: new Date('2026-09-01T00:00:00.000Z'),
+            authorizationPassword: 'SENHA1',
+            patient: {
+              insuranceCards: [{ healthPlanId: 3, cardNumber: '000111' }],
+            },
+            healthProfessional: {
+              name: 'DR CARLOS',
+              councilType: 'CRM',
+              councilNumber: '123456',
+              councilUf: 'SP',
+              cbosCode: '225142',
+              cpf: '12345678901',
+            },
+            procedures: [
+              {
+                procedureId: 31,
+                usedQuantity: 5,
+                value: 40,
+                procedure: {
+                  name: 'ACUPUNTURA',
+                  tissGuideType: TissGuideType.sp_sadt,
+                  healthPlanPrices: [{ healthPlanId: 3, tissCode: '31601014' }],
+                },
+              },
+            ],
+            clinicalAppointmentGuides: [],
+            appointmentProcedures: sessionDates.map((date) => ({
+              procedureId: 31,
+              clinicalAppointment: {
+                status: ClinicalAppointmentStatus.finished,
+                scheduledAt: new Date(`${date}T15:00:00.000Z`),
+              },
+            })),
+          },
+        },
+      ],
+    });
+    prisma.clinicProfile.findUnique.mockResolvedValue({
+      legalName: 'Clinica Exemplo Ltda',
+      cnpj: '12345678000199',
+      cnes: '1234567',
+    });
+
+    const file = await service.exportBatch(16);
+    const xml = file.buffer.toString('utf8');
+    const dates = [
+      ...xml.matchAll(/<ans:dataExecucao>([^<]+)<\/ans:dataExecucao>/g),
+    ].map((match) => match[1]);
+    expect(dates).toEqual([
+      '2026-08-10',
+      '2026-08-12',
+      '2026-08-14',
+      '2026-08-17',
+      '2026-08-19',
+    ]);
+    expect(
+      xml.match(/<ans:quantidadeExecutada>1<\/ans:quantidadeExecutada>/g),
+    ).toHaveLength(5);
+    expect(xml).not.toContain('<ans:quantidadeExecutada>5');
+    expect(xml).toContain('<ans:valorUnitario>40.00</ans:valorUnitario>');
+    expect(xml).toContain('<ans:valorTotal>40.00</ans:valorTotal>');
+    expect(xml).toContain('<ans:valorTotalGeral>200.00</ans:valorTotalGeral>');
+    expect(xml).toContain('<ans:sequencialItem>5</ans:sequencialItem>');
   });
 });

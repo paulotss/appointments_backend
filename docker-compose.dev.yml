@@ -15,7 +15,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    restart: unless-stopped
+    restart: no
+    networks:
+      - appointments-network
 
   postgres:
     image: postgres:16-alpine
@@ -31,8 +33,14 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    restart: unless-stopped
+    restart: no
+    networks:
+      - appointments-network
 
 volumes:
   postgres_dev_data:
   node_modules_dev:
+
+networks:
+  appointments-network:
+    driver: bridge

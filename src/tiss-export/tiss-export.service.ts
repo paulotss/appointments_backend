@@ -4,15 +4,24 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { BillingBatchStatus, TissGuideType } from '@prisma/client';
+import {
+  BillingBatchStatus,
+  ClinicalAppointmentStatus,
+  TissGuideType,
+} from '@prisma/client';
 import { isBrazilianUf } from '../common/brazilian-uf';
 import { isTissVersion } from '../common/tiss-version';
 import { decimalToNumber } from '../finance/money';
 import { PrismaService } from '../prisma/prisma.service';
+import { splitProcedureExecutions } from './tiss-session-lines';
 import { buildExportFiles } from './tiss-xml.builder';
 import { formatDateOnly, formatYmdSaoPaulo } from './tiss-xml';
 import { zipStore } from './tiss-zip';
-import type { TissGuideData, TissProfessionalData } from './tiss-export.types';
+import type {
+  TissGuideData,
+  TissProcedureItem,
+  TissProfessionalData,
+} from './tiss-export.types';
 
 export type TissExportDownload = {
   filename: string;
@@ -48,6 +57,19 @@ export class TissExportService {
                 },
                 clinicalAppointmentGuides: {
                   include: { clinicalAppointment: true },
+                },
+                appointmentProcedures: {
+                  where: {
+                    clinicalAppointment: {
+                      status: ClinicalAppointmentStatus.finished,
+                    },
+                  },
+                  select: {
+                    procedureId: true,
+                    clinicalAppointment: {
+                      select: { scheduledAt: true },
+                    },
+                  },
                 },
               },
             },
@@ -122,24 +144,42 @@ export class TissExportService {
       }
 
       const attendanceDate = this.attendanceDate(guide);
-      const procedures = used.map((item) => {
+      const sessions = guide.appointmentProcedures ?? [];
+      const procedures = used.flatMap((item) => {
         const tissCode =
-          item.procedure.healthPlanPrices.find(
-            (price) => price.healthPlanId === batch.healthPlanId,
-          )?.tissCode.trim() ?? '';
+          item.procedure.healthPlanPrices
+            .find((price) => price.healthPlanId === batch.healthPlanId)
+            ?.tissCode.trim() ?? '';
         if (!tissCode) {
           errors.push(
             `Guia ${label}: procedimento ${item.procedure.name} sem código TISS neste plano.`,
           );
         }
-        return {
-          tissCode,
-          description: item.procedure.name,
+        const sessionDates = sessions
+          .filter((session) => session.procedureId === item.procedureId)
+          .map((session) =>
+            formatYmdSaoPaulo(session.clinicalAppointment.scheduledAt),
+          );
+        return splitProcedureExecutions({
           quantity: item.usedQuantity,
-          unitValue: decimalToNumber(item.value),
-          executionDate: attendanceDate,
-        };
+          sessionDates,
+          fallbackDate: attendanceDate,
+          splitBySession: kind === TissGuideType.sp_sadt,
+        }).map(
+          (line): TissProcedureItem => ({
+            tissCode,
+            description: item.procedure.name,
+            quantity: line.quantity,
+            unitValue: decimalToNumber(item.value),
+            executionDate: line.executionDate,
+          }),
+        );
       });
+      procedures.sort(
+        (left, right) =>
+          left.executionDate.localeCompare(right.executionDate) ||
+          left.tissCode.localeCompare(right.tissCode),
+      );
 
       guides.push({
         id: guide.id,
