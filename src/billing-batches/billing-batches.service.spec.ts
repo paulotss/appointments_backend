@@ -209,3 +209,103 @@ describe('BillingBatchesService.billGuide', () => {
     });
   });
 });
+
+describe('BillingBatchesService.exportGuideDocuments', () => {
+  const prisma = {
+    billingBatch: { findUnique: jest.fn() },
+    insuranceGuideDocument: { findMany: jest.fn() },
+  };
+  const fileStorage = { getBuffer: jest.fn() };
+  const service = new BillingBatchesService(
+    prisma as never,
+    fileStorage as never,
+  );
+  const batch = {
+    id: 28,
+    batchNumber: '28-20261021',
+    guides: [
+      {
+        insuranceGuideId: 7,
+        insuranceGuide: {
+          id: 7,
+          guideNumber: '421715',
+          patient: { name: 'Maria Silva' },
+        },
+      },
+      {
+        insuranceGuideId: 9,
+        insuranceGuide: {
+          id: 9,
+          guideNumber: null,
+          patient: { name: 'João Souza' },
+        },
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('names each guide whose image is missing in storage', async () => {
+    prisma.billingBatch.findUnique.mockResolvedValue(batch);
+    prisma.insuranceGuideDocument.findMany.mockResolvedValue([
+      {
+        id: 1,
+        insuranceGuideId: 7,
+        originalName: 'a.jpg',
+        storageKey: 'guides/7/a.jpg',
+      },
+      {
+        id: 2,
+        insuranceGuideId: 7,
+        originalName: 'a2.jpg',
+        storageKey: 'guides/7/a2.jpg',
+      },
+      {
+        id: 3,
+        insuranceGuideId: 9,
+        originalName: 'b.jpg',
+        storageKey: 'guides/9/b.jpg',
+      },
+    ]);
+    fileStorage.getBuffer.mockRejectedValue(
+      Object.assign(new Error('The specified key does not exist.'), {
+        name: 'NoSuchKey',
+        Code: 'NoSuchKey',
+      }),
+    );
+
+    await expect(service.exportGuideDocuments(28)).rejects.toThrow(
+      new BadRequestException(
+        [
+          'A imagem não foi encontrada nestas guias:',
+          '- guia 421715 (Maria Silva)',
+          '- guia 9 (João Souza)',
+          'Envie as imagens novamente nessas guias.',
+        ].join('\n'),
+      ),
+    );
+  });
+
+  it('names a single guide when only one image is missing', async () => {
+    prisma.billingBatch.findUnique.mockResolvedValue(batch);
+    prisma.insuranceGuideDocument.findMany.mockResolvedValue([
+      {
+        id: 1,
+        insuranceGuideId: 7,
+        originalName: 'a.jpg',
+        storageKey: 'guides/7/a.jpg',
+      },
+    ]);
+    fileStorage.getBuffer.mockRejectedValue(
+      new NotFoundException('Object guides/7/a.jpg not found'),
+    );
+
+    await expect(service.exportGuideDocuments(28)).rejects.toThrow(
+      new BadRequestException(
+        'A imagem da guia 421715 (Maria Silva) não foi encontrada. Envie a imagem novamente nessa guia.',
+      ),
+    );
+  });
+});

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -51,6 +52,8 @@ const billingBatchInclude = {
 
 @Injectable()
 export class BillingBatchesService {
+  private readonly logger = new Logger(BillingBatchesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly fileStorage: FileStorageService,
@@ -150,13 +153,41 @@ export class BillingBatchesService {
       throw new BadRequestException('Nenhuma imagem de guia neste lote.');
     }
 
+    const guidesById = new Map(
+      batch.guides.map((item) => [item.insuranceGuideId, item.insuranceGuide]),
+    );
     const usedNames = new Set<string>();
     const files: Array<{ name: string; data: Buffer }> = [];
+    const missingLabels: string[] = [];
+    const reportedGuides = new Set<number>();
     for (const document of documents) {
-      const data = await this.fileStorage.getBuffer(document.storageKey);
+      let data: Buffer;
+      try {
+        data = await this.fileStorage.getBuffer(document.storageKey);
+      } catch (error) {
+        if (!isMissingStoredObject(error)) {
+          throw error;
+        }
+        this.logger.warn(
+          `Guide document missing in storage: batch=${id} guide=${document.insuranceGuideId} key=${document.storageKey}`,
+        );
+        if (!reportedGuides.has(document.insuranceGuideId)) {
+          reportedGuides.add(document.insuranceGuideId);
+          missingLabels.push(
+            guideImageLabel(
+              guidesById.get(document.insuranceGuideId),
+              document.insuranceGuideId,
+            ),
+          );
+        }
+        continue;
+      }
       const name = uniqueZipName(document.originalName, usedNames);
       usedNames.add(name);
       files.push({ name, data });
+    }
+    if (missingLabels.length > 0) {
+      throw new BadRequestException(missingGuideImagesMessage(missingLabels));
     }
 
     const safeBatch = batch.batchNumber.replaceAll(/[^a-zA-Z0-9._-]/g, '_');
@@ -535,6 +566,46 @@ export class BillingBatchesService {
       };
     });
   }
+}
+
+function isMissingStoredObject(error: unknown): boolean {
+  if (error instanceof NotFoundException) {
+    return true;
+  }
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  const candidate = error as { name?: string; Code?: string };
+  return candidate.name === 'NoSuchKey' || candidate.Code === 'NoSuchKey';
+}
+
+function guideImageLabel(
+  guide:
+    | {
+        id: number;
+        guideNumber: string | null;
+        patient?: { name: string } | null;
+      }
+    | undefined,
+  insuranceGuideId: number,
+): string {
+  const number = guide?.guideNumber?.trim();
+  const title = number
+    ? `guia ${number}`
+    : `guia ${guide?.id ?? insuranceGuideId}`;
+  const patient = guide?.patient?.name?.trim();
+  return patient ? `${title} (${patient})` : title;
+}
+
+function missingGuideImagesMessage(labels: string[]): string {
+  if (labels.length === 1) {
+    return `A imagem da ${labels[0]} não foi encontrada. Envie a imagem novamente nessa guia.`;
+  }
+  return [
+    'A imagem não foi encontrada nestas guias:',
+    ...labels.map((label) => `- ${label}`),
+    'Envie as imagens novamente nessas guias.',
+  ].join('\n');
 }
 
 function uniqueZipName(originalName: string, usedNames: Set<string>): string {
