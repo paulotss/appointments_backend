@@ -35,8 +35,13 @@ function prestadorId(xml: XmlBuilder, payload: TissLotePayload): string {
   return xml.leaf('codigoPrestadorNaOperadora', codigoReferenciado(payload));
 }
 
-function equipeSadt(xml: XmlBuilder, professional: TissProfessionalData): string {
+function equipeSadt(
+  xml: XmlBuilder,
+  professional: TissProfessionalData,
+  participationDegree: string,
+): string {
   return xml.branch('equipeSadt', [
+    xml.leaf('grauPart', participationDegree),
     xml.branch('codProfissional', [
       xml.leaf('cpfContratado', professional.cpf),
     ]),
@@ -174,7 +179,7 @@ function guiaSpSadt(xml: XmlBuilder, payload: TissLotePayload, guide: TissGuideD
           xml.leaf('reducaoAcrescimo', TISS_REDUCAO_ACRESCIMO),
           xml.leaf('valorUnitario', formatTissDecimal(item.unitValue)),
           xml.leaf('valorTotal', formatTissDecimal(item.unitValue * item.quantity)),
-          equipeSadt(xml, guide.professional),
+          equipeSadt(xml, guide.professional, guide.participationDegree),
         ]),
       ),
     ),

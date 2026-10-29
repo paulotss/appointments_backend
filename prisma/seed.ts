@@ -562,10 +562,10 @@ async function main() {
 
     const specialties = await prisma.specialty.createManyAndReturn({
       data: [
-        { name: 'CLINICO GERAL' },
-        { name: 'CARDIOLOGIA' },
-        { name: 'DERMATOLOGIA' },
-        { name: 'PSICOLOGIA' },
+        { name: 'CLINICO GERAL', cbosCode: '225125' },
+        { name: 'CARDIOLOGIA', cbosCode: '225142' },
+        { name: 'DERMATOLOGIA', cbosCode: '223505' },
+        { name: 'PSICOLOGIA', cbosCode: '251510' },
       ],
     });
 
@@ -649,7 +649,6 @@ async function main() {
         councilType: CouncilType.CRM,
         councilNumber: '123456',
         councilUf: 'SP',
-        cbosCode: '225142',
         cpf: '52998224725',
         phone: '11988887777',
         email: 'carlos.mendes@email.com',
@@ -679,7 +678,6 @@ async function main() {
         councilType: CouncilType.CRM,
         councilNumber: '654321',
         councilUf: 'SP',
-        cbosCode: '225125',
         cpf: '39053344705',
         phone: '11977776666',
         email: 'ana.costa@email.com',
@@ -698,7 +696,6 @@ async function main() {
         councilType: CouncilType.COREN,
         councilNumber: '98765',
         councilUf: 'SP',
-        cbosCode: '223505',
         cpf: '11144477735',
         phone: '11966665555',
         isActive: false,

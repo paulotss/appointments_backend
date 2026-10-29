@@ -6,7 +6,6 @@ import {
   IsIn,
   IsOptional,
   IsString,
-  Matches,
   MaxLength,
   MinLength,
   ValidateNested,
@@ -38,11 +37,6 @@ export class CreateHealthProfessionalDto {
   @ApiProperty({ example: 'SP', enum: BRAZILIAN_UFS })
   @IsIn(BRAZILIAN_UFS)
   councilUf!: string;
-
-  @ApiProperty({ example: '225142', description: 'Codigo CBO-S (6 digitos)' })
-  @IsString()
-  @Matches(/^\d{6}$/, { message: 'cbosCode must have 6 digits' })
-  cbosCode!: string;
 
   @ApiProperty({ example: '52998224725', description: 'CPF com 11 digitos' })
   cpf!: string;

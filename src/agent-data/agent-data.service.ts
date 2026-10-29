@@ -293,7 +293,9 @@ export class AgentDataService {
           councilNumber: true,
           isActive: true,
           specialties: {
-            select: { specialty: { select: { id: true, name: true } } },
+            select: {
+              specialty: { select: { id: true, name: true, cbosCode: true } },
+            },
           },
         },
       }),
@@ -323,10 +325,11 @@ export class AgentDataService {
         councilType: true,
         councilNumber: true,
         councilUf: true,
-        cbosCode: true,
         isActive: true,
         specialties: {
-          select: { specialty: { select: { id: true, name: true } } },
+          select: {
+            specialty: { select: { id: true, name: true, cbosCode: true } },
+          },
         },
       },
     });
@@ -554,7 +557,7 @@ export class AgentDataService {
           firstTime: true,
           contactMethod: true,
           reason: true,
-          specialty: { select: { id: true, name: true } },
+          specialty: { select: { id: true, name: true, cbosCode: true } },
           attendant: { select: { id: true, name: true } },
         },
       }),
@@ -1112,7 +1115,7 @@ export class AgentDataService {
           name: true,
           value: true,
           tissGuideType: true,
-          specialty: { select: { id: true, name: true } },
+          specialty: { select: { id: true, name: true, cbosCode: true } },
         },
       }),
       this.prisma.procedure.count({ where }),
@@ -1133,7 +1136,7 @@ export class AgentDataService {
       case AgentCatalogType.specialties:
         return this.prisma.specialty.findMany({
           orderBy: { name: 'asc' },
-          select: { id: true, name: true },
+          select: { id: true, name: true, cbosCode: true },
         });
       case AgentCatalogType.health_plans:
         return this.prisma.healthPlan.findMany({

@@ -18,6 +18,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
+import { TISS_PARTICIPATION_DEGREES } from '../../tiss-export/tiss-constants';
 
 export class CommitGuideImportProcedureDto {
   @ApiProperty({ example: 1 })
@@ -155,6 +156,15 @@ export class CommitGuideImportDto {
   @IsString()
   @MaxLength(20)
   authorizationPassword?: string | null;
+
+  @ApiPropertyOptional({
+    example: '12',
+    description: 'Grau de participacao (tabela 35 da ANS). Padrao 12 (clinico).',
+    enum: TISS_PARTICIPATION_DEGREES,
+  })
+  @IsOptional()
+  @IsIn(TISS_PARTICIPATION_DEGREES)
+  participationDegree?: (typeof TISS_PARTICIPATION_DEGREES)[number];
 
   @ApiPropertyOptional()
   @IsOptional()

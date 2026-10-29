@@ -6,6 +6,7 @@ import {
   IsArray,
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -15,6 +16,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { InsuranceGuideProcedureInputDto } from './insurance-guide-procedure-input.dto';
+import { TISS_PARTICIPATION_DEGREES } from '../../tiss-export/tiss-constants';
 
 export class CreateInsuranceGuideDto {
   @ApiProperty({ example: 1 })
@@ -64,6 +66,16 @@ export class CreateInsuranceGuideDto {
   @IsString()
   @MaxLength(20)
   authorizationPassword?: string | null;
+
+  @ApiPropertyOptional({
+    example: '12',
+    description:
+      'Grau de participacao (tabela 35 da ANS). Padrao 12 (clinico). Enviado no XML de SP/SADT.',
+    enum: TISS_PARTICIPATION_DEGREES,
+  })
+  @IsOptional()
+  @IsIn(TISS_PARTICIPATION_DEGREES)
+  participationDegree?: (typeof TISS_PARTICIPATION_DEGREES)[number];
 
   @ApiPropertyOptional({
     example: '2026-09-01',

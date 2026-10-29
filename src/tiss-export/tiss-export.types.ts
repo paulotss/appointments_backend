@@ -40,6 +40,7 @@ export interface TissGuideData {
   authorizationPassword: string | null;
   expirationDate: string;
   attendanceDate: string;
+  participationDegree: string;
   professional: TissProfessionalData;
   procedures: TissProcedureItem[];
 }

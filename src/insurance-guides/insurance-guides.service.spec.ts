@@ -144,6 +144,31 @@ describe('InsuranceGuidesService tissGuideType homogeneity', () => {
     });
   });
 
+  it('rejects procedures from different specialties', async () => {
+    prisma.procedure.findMany.mockResolvedValue([
+      { id: 9, specialtyId: 4, tissGuideType: 'sp_sadt' },
+      { id: 10, specialtyId: 5, tissGuideType: 'sp_sadt' },
+    ]);
+    prisma.healthProfessionalSpecialty.findMany.mockResolvedValue([
+      { specialtyId: 4 },
+      { specialtyId: 5 },
+    ]);
+
+    await expect(
+      service.create({
+        healthPlanId: 1,
+        patientId: 2,
+        healthProfessionalId: 3,
+        procedures: [
+          { procedureId: 9, authorizedQuantity: 1 },
+          { procedureId: 10, authorizedQuantity: 1 },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      message: 'procedures must belong to the same specialty',
+    });
+  });
+
   it('rejects consulta guides with more than one procedure', async () => {
     prisma.procedure.findMany.mockResolvedValue([
       { id: 9, specialtyId: 4, tissGuideType: 'consulta' },
@@ -223,6 +248,7 @@ describe('InsuranceGuidesService manual used quantity', () => {
     expect(prisma.insuranceGuide.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          participationDegree: '12',
           procedures: {
             create: [
               expect.objectContaining({

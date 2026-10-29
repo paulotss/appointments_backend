@@ -77,6 +77,9 @@ export class GuideImportsService {
           ...(dto.authorizationPassword !== undefined && {
             authorizationPassword: dto.authorizationPassword,
           }),
+          ...(dto.participationDegree !== undefined && {
+            participationDegree: dto.participationDegree,
+          }),
           ...(dto.expirationDate !== undefined && {
             expirationDate: dto.expirationDate,
           }),

@@ -87,7 +87,6 @@ describe('TissExportService.exportBatch', () => {
               councilType: 'CRM',
               councilNumber: '123456',
               councilUf: null,
-              cbosCode: null,
             },
             procedures: [
               {
@@ -96,6 +95,7 @@ describe('TissExportService.exportBatch', () => {
                 procedure: {
                   name: 'CONSULTA',
                   tissGuideType: TissGuideType.consulta,
+                  specialty: { id: 4, name: 'CARDIOLOGIA', cbosCode: null },
                   healthPlanPrices: [],
                 },
               },
@@ -125,7 +125,7 @@ describe('TissExportService.exportBatch', () => {
           'Guia #8: informe o número da guia.',
           'Guia #8: paciente sem carteira deste plano.',
           'Guia #8: informe a UF do conselho do profissional.',
-          'Guia #8: informe o CBO-S do profissional (6 dígitos).',
+          'Guia #8: informe o CBO-S da especialidade CARDIOLOGIA (6 dígitos).',
         ]),
       );
     }
@@ -152,12 +152,12 @@ describe('TissExportService.exportBatch', () => {
             patient: {
               insuranceCards: [{ healthPlanId: 3, cardNumber: '000111' }],
             },
+            participationDegree: '12',
             healthProfessional: {
               name: 'DR CARLOS',
               councilType: 'CRM',
               councilNumber: '123456',
               councilUf: 'SP',
-              cbosCode: '225142',
             },
             procedures: [
               {
@@ -166,6 +166,7 @@ describe('TissExportService.exportBatch', () => {
                 procedure: {
                   name: 'CONSULTA',
                   tissGuideType: TissGuideType.consulta,
+                  specialty: { id: 4, name: 'CARDIOLOGIA', cbosCode: '225142' },
                   healthPlanPrices: [{ healthPlanId: 3, tissCode: '10101012' }],
                 },
               },
@@ -193,6 +194,8 @@ describe('TissExportService.exportBatch', () => {
       '<ans:codigoPrestadorNaOperadora>12345678000199</ans:codigoPrestadorNaOperadora>',
     );
     expect(xml).toContain('<ans:codigoProcedimento>10101012</ans:codigoProcedimento>');
+    expect(xml).toContain('<ans:CBOS>225142</ans:CBOS>');
+    expect(xml).not.toContain('<ans:grauPart>');
     expect(xml).toMatch(/<ans:hash>[a-f0-9]{32}<\/ans:hash>/);
   });
 
@@ -223,6 +226,7 @@ describe('TissExportService.exportBatch', () => {
             authorizationDate: new Date('2026-08-01T00:00:00.000Z'),
             expirationDate: new Date('2026-09-01T00:00:00.000Z'),
             authorizationPassword: 'SENHA1',
+            participationDegree: '06',
             patient: {
               insuranceCards: [{ healthPlanId: 3, cardNumber: '000111' }],
             },
@@ -231,7 +235,6 @@ describe('TissExportService.exportBatch', () => {
               councilType: 'CRM',
               councilNumber: '123456',
               councilUf: 'SP',
-              cbosCode: '225142',
               cpf: '12345678901',
             },
             procedures: [
@@ -242,6 +245,7 @@ describe('TissExportService.exportBatch', () => {
                 procedure: {
                   name: 'ACUPUNTURA',
                   tissGuideType: TissGuideType.sp_sadt,
+                  specialty: { id: 2, name: 'CLINICO GERAL', cbosCode: '225125' },
                   healthPlanPrices: [{ healthPlanId: 3, tissCode: '31601014' }],
                 },
               },
@@ -284,5 +288,86 @@ describe('TissExportService.exportBatch', () => {
     expect(xml).toContain('<ans:valorTotal>40.00</ans:valorTotal>');
     expect(xml).toContain('<ans:valorTotalGeral>200.00</ans:valorTotalGeral>');
     expect(xml).toContain('<ans:sequencialItem>5</ans:sequencialItem>');
+    expect(xml).toContain('<ans:grauPart>06</ans:grauPart>');
+    expect(xml).toContain('<ans:CBOS>225125</ans:CBOS>');
+  });
+
+  it('rejects a guide whose procedures belong to different specialties', async () => {
+    prisma.billingBatch.findUnique.mockResolvedValue({
+      id: 17,
+      status: BillingBatchStatus.billed,
+      batchNumber: '17-20260901',
+      healthPlanId: 3,
+      healthPlan: {
+        registroAns: '351033',
+        providerCode: '99999',
+        tissVersion: '4.03.00',
+      },
+      guides: [
+        {
+          insuranceGuide: {
+            id: 10,
+            guideNumber: 'G-MIX',
+            tissGuideType: TissGuideType.sp_sadt,
+            authorizationDate: new Date('2026-08-01T00:00:00.000Z'),
+            participationDegree: '12',
+            patient: {
+              insuranceCards: [{ healthPlanId: 3, cardNumber: '000111' }],
+            },
+            healthProfessional: {
+              name: 'DR CARLOS',
+              councilType: 'CRM',
+              councilNumber: '123456',
+              councilUf: 'SP',
+              cpf: '12345678901',
+            },
+            procedures: [
+              {
+                usedQuantity: 1,
+                value: 40,
+                procedure: {
+                  name: 'ECG',
+                  tissGuideType: TissGuideType.sp_sadt,
+                  specialty: { id: 2, name: 'CARDIOLOGIA', cbosCode: '225142' },
+                  healthPlanPrices: [{ healthPlanId: 3, tissCode: '40304361' }],
+                },
+              },
+              {
+                usedQuantity: 1,
+                value: 40,
+                procedure: {
+                  name: 'CONSULTA SADT',
+                  tissGuideType: TissGuideType.sp_sadt,
+                  specialty: { id: 3, name: 'CLINICO GERAL', cbosCode: '225125' },
+                  healthPlanPrices: [{ healthPlanId: 3, tissCode: '10101012' }],
+                },
+              },
+            ],
+            clinicalAppointmentGuides: [],
+          },
+        },
+      ],
+    });
+    prisma.clinicProfile.findUnique.mockResolvedValue({
+      legalName: 'Clinica Exemplo Ltda',
+      cnpj: '12345678000199',
+      cnes: '1234567',
+    });
+
+    await expect(service.exportBatch(17)).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    );
+    try {
+      await service.exportBatch(17);
+    } catch (error) {
+      const response = (error as UnprocessableEntityException).getResponse() as {
+        message: string[];
+      };
+      expect(response.message).toEqual(
+        expect.arrayContaining([
+          'Guia G-MIX: procedimentos de especialidades diferentes devem ficar em guias distintas.',
+        ]),
+      );
+    }
   });
 });
