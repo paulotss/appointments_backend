@@ -6,7 +6,6 @@ import {
   IsIn,
   IsOptional,
   IsString,
-  Matches,
   MaxLength,
   MinLength,
   ValidateIf,
@@ -41,16 +40,6 @@ export class UpdateHealthProfessionalDto {
   @ValidateIf((_, value) => value != null && value !== '')
   @IsIn(BRAZILIAN_UFS)
   councilUf?: string | null;
-
-  @ApiPropertyOptional({
-    example: '225142',
-    nullable: true,
-    description: 'Codigo CBO-S (6 digitos)',
-  })
-  @ValidateIf((_, value) => value != null && value !== '')
-  @IsString()
-  @Matches(/^\d{6}$/, { message: 'cbosCode must have 6 digits' })
-  cbosCode?: string | null;
 
   @ApiPropertyOptional({ example: '52998224725' })
   cpf?: string;

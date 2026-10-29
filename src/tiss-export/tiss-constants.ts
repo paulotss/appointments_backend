@@ -10,6 +10,34 @@ export const TISS_TIPO_ATENDIMENTO = '23';
 export const TISS_REDUCAO_ACRESCIMO = '1.00';
 export const TISS_TIPO_TRANSACAO = 'ENVIO_LOTE_GUIAS';
 
+/** Tabela 35 da ANS (dm_grauPart). */
+export const TISS_PARTICIPATION_DEGREES = [
+  '00',
+  '01',
+  '02',
+  '03',
+  '04',
+  '05',
+  '06',
+  '07',
+  '08',
+  '09',
+  '10',
+  '11',
+  '12',
+  '13',
+] as const;
+
+export type TissParticipationDegree = (typeof TISS_PARTICIPATION_DEGREES)[number];
+
+export const TISS_PARTICIPATION_DEGREE_DEFAULT: TissParticipationDegree = '12';
+
+export function isTissParticipationDegree(
+  value: string,
+): value is TissParticipationDegree {
+  return (TISS_PARTICIPATION_DEGREES as readonly string[]).includes(value);
+}
+
 export const COUNCIL_TYPE_TO_TISS: Record<string, string> = {
   CRM: '06',
   CRO: '08',

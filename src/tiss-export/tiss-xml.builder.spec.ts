@@ -38,6 +38,7 @@ const basePayload: TissLotePayload = {
       authorizationPassword: null,
       expirationDate: '2026-09-01',
       attendanceDate: '2026-08-10',
+      participationDegree: '12',
       professional: {
         name: 'DR CARLOS',
         councilType: 'CRM',
@@ -68,6 +69,7 @@ describe('buildLoteXml', () => {
     expect(xml).toContain('<ans:guiaConsulta>');
     expect(xml).not.toContain('<ans:senha>');
     expect(xml).not.toContain('<ans:equipeSadt>');
+    expect(xml).not.toContain('<ans:grauPart>');
     expect(xml).toContain('<ans:UF>35</ans:UF>');
     expect(xml).toContain(
       '<ans:dadosAtendimento>' +
@@ -156,6 +158,7 @@ describe('buildLoteXml', () => {
     expect(xml).toContain('<ans:dataValidadeSenha>2026-09-01</ans:dataValidadeSenha>');
     expect(xml).toContain(
       '<ans:equipeSadt>' +
+        '<ans:grauPart>12</ans:grauPart>' +
         '<ans:codProfissional><ans:cpfContratado>12345678901</ans:cpfContratado></ans:codProfissional>' +
         '<ans:nomeProf>DR CARLOS</ans:nomeProf>' +
         '<ans:conselho>06</ans:conselho>' +

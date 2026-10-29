@@ -220,6 +220,7 @@ model ClinicProfile {
 model Specialty {
   id                            Int                           @id @default(autoincrement())
   name                          String                        @db.VarChar(100)
+  cbosCode                      String?                       @map("cbos_code") @db.VarChar(6)
   appointments                  Appointment[]
   healthProfessionalSpecialties HealthProfessionalSpecialty[]
   procedures                    Procedure[]
@@ -233,7 +234,6 @@ model HealthProfessional {
   councilType   CouncilType @map("council_type")
   councilNumber String      @map("council_number") @db.VarChar(30)
   councilUf     String?     @map("council_uf") @db.VarChar(2)
-  cbosCode      String?     @map("cbos_code") @db.VarChar(6)
   cpf           String      @unique @db.VarChar(11)
   phone         String?     @db.VarChar(20)
   email         String?     @db.VarChar(150)
@@ -419,6 +419,7 @@ model InsuranceGuide {
   isBilled             Boolean                    @default(false) @map("is_billed")
   status               InsuranceGuideStatus       @default(pending)
   tissGuideType        TissGuideType?             @map("tiss_guide_type")
+  participationDegree  String                     @default("12") @map("participation_degree") @db.VarChar(2)
   healthPlan           HealthPlan                 @relation(fields: [healthPlanId], references: [id], onDelete: Restrict)
   patient              Patient                    @relation(fields: [patientId], references: [id], onDelete: Restrict)
   healthProfessional   HealthProfessional         @relation(fields: [healthProfessionalId], references: [id], onDelete: Restrict)

@@ -13,6 +13,7 @@ import { isBrazilianUf } from '../common/brazilian-uf';
 import { isTissVersion } from '../common/tiss-version';
 import { decimalToNumber } from '../finance/money';
 import { PrismaService } from '../prisma/prisma.service';
+import { TISS_PARTICIPATION_DEGREE_DEFAULT } from './tiss-constants';
 import { splitProcedureExecutions } from './tiss-session-lines';
 import { buildExportFiles } from './tiss-xml.builder';
 import { formatDateOnly, formatYmdSaoPaulo } from './tiss-xml';
@@ -51,7 +52,10 @@ export class TissExportService {
                 procedures: {
                   include: {
                     procedure: {
-                      include: { healthPlanPrices: true },
+                      include: {
+                        healthPlanPrices: true,
+                        specialty: true,
+                      },
                     },
                   },
                 },
@@ -126,12 +130,10 @@ export class TissExportService {
         errors.push(`Guia ${label}: paciente sem carteira deste plano.`);
       }
 
-      const professional = this.mapProfessional(
-        guide.healthProfessional,
-        errors,
-        label,
-        kind,
-      );
+      const professional = {
+        ...this.mapProfessional(guide.healthProfessional, errors, label, kind),
+        cbosCode: this.resolveGuideCbos(guide.procedures, errors, label),
+      };
 
       const used = guide.procedures.filter((item) => item.usedQuantity > 0);
       if (used.length === 0) {
@@ -192,6 +194,8 @@ export class TissExportService {
           ? formatDateOnly(guide.expirationDate)
           : '',
         attendanceDate,
+        participationDegree:
+          guide.participationDegree ?? TISS_PARTICIPATION_DEGREE_DEFAULT,
         professional,
         procedures,
       });
@@ -264,21 +268,16 @@ export class TissExportService {
       councilType: TissProfessionalData['councilType'];
       councilNumber: string;
       councilUf: string | null;
-      cbosCode: string | null;
       cpf?: string | null;
     },
     errors: string[],
     label: string,
     kind: TissGuideType | null,
-  ): TissProfessionalData {
+  ): Omit<TissProfessionalData, 'cbosCode'> {
     const councilUf = professional.councilUf?.trim().toUpperCase() ?? '';
-    const cbosCode = professional.cbosCode?.replace(/\D/g, '') ?? '';
     const cpf = professional.cpf?.replace(/\D/g, '') ?? '';
     if (!isBrazilianUf(councilUf)) {
       errors.push(`Guia ${label}: informe a UF do conselho do profissional.`);
-    }
-    if (cbosCode.length !== 6) {
-      errors.push(`Guia ${label}: informe o CBO-S do profissional (6 dígitos).`);
     }
     if (kind === TissGuideType.sp_sadt && cpf.length !== 11) {
       errors.push(`Guia ${label}: informe o CPF do profissional.`);
@@ -288,9 +287,45 @@ export class TissExportService {
       councilType: professional.councilType,
       councilNumber: professional.councilNumber.trim(),
       councilUf,
-      cbosCode,
       cpf,
     };
+  }
+
+  private resolveGuideCbos(
+    procedures: Array<{
+      procedure: {
+        specialty?: { id: number; name: string; cbosCode: string | null } | null;
+      };
+    }>,
+    errors: string[],
+    label: string,
+  ): string {
+    if (procedures.length === 0) return '';
+    const specialties = new Map<number, { name: string; cbosCode: string | null }>();
+    for (const item of procedures) {
+      const specialty = item.procedure.specialty;
+      if (!specialty) {
+        errors.push(
+          `Guia ${label}: informe o CBO-S da especialidade do procedimento (6 dígitos).`,
+        );
+        return '';
+      }
+      specialties.set(specialty.id, specialty);
+    }
+    if (specialties.size !== 1) {
+      errors.push(
+        `Guia ${label}: procedimentos de especialidades diferentes devem ficar em guias distintas.`,
+      );
+      return '';
+    }
+    const specialty = [...specialties.values()][0]!;
+    const cbosCode = specialty.cbosCode?.replace(/\D/g, '') ?? '';
+    if (cbosCode.length !== 6) {
+      errors.push(
+        `Guia ${label}: informe o CBO-S da especialidade ${specialty.name} (6 dígitos).`,
+      );
+    }
+    return cbosCode;
   }
 
   private attendanceDate(guide: {

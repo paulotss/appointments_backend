@@ -102,7 +102,6 @@ export class HealthProfessionalsService {
           councilType: createHealthProfessionalDto.councilType,
           councilNumber: createHealthProfessionalDto.councilNumber.trim(),
           councilUf: createHealthProfessionalDto.councilUf,
-          cbosCode: createHealthProfessionalDto.cbosCode,
           cpf: digitsOnly(createHealthProfessionalDto.cpf),
           phone: createHealthProfessionalDto.phone,
           email: createHealthProfessionalDto.email,
@@ -294,13 +293,6 @@ export class HealthProfessionalsService {
                 updateHealthProfessionalDto.councilUf === ''
                   ? null
                   : updateHealthProfessionalDto.councilUf,
-            }),
-            ...(updateHealthProfessionalDto.cbosCode !== undefined && {
-              cbosCode:
-                updateHealthProfessionalDto.cbosCode == null ||
-                updateHealthProfessionalDto.cbosCode === ''
-                  ? null
-                  : updateHealthProfessionalDto.cbosCode,
             }),
             ...(updateHealthProfessionalDto.cpf !== undefined && {
               cpf: digitsOnly(updateHealthProfessionalDto.cpf),

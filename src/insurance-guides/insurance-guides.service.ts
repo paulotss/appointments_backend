@@ -27,6 +27,7 @@ import {
 } from '../common/pagination/list-envelope';
 import { resolveEffectiveBlocks } from '../health-professionals/schedule-intervals';
 import { PrismaService } from '../prisma/prisma.service';
+import { TISS_PARTICIPATION_DEGREE_DEFAULT } from '../tiss-export/tiss-constants';
 import { FileStorageService } from '../uploads/file-storage.service';
 import { UploadedFile } from '../uploads/uploaded-file';
 import { CreateInsuranceGuideDto } from './dto/create-insurance-guide.dto';
@@ -150,6 +151,9 @@ export class InsuranceGuidesService {
           authorizationPassword: this.normalizeAuthorizationPassword(
             createInsuranceGuideDto.authorizationPassword,
           ),
+          participationDegree:
+            createInsuranceGuideDto.participationDegree ??
+            TISS_PARTICIPATION_DEGREE_DEFAULT,
           tissGuideType,
           ...(createInsuranceGuideDto.guideNumber !== undefined && {
             guideNumber: this.normalizeGuideNumber(
@@ -346,6 +350,9 @@ export class InsuranceGuidesService {
               authorizationPassword: this.normalizeAuthorizationPassword(
                 updateInsuranceGuideDto.authorizationPassword,
               ),
+            }),
+            ...(updateInsuranceGuideDto.participationDegree !== undefined && {
+              participationDegree: updateInsuranceGuideDto.participationDegree,
             }),
             ...(updateInsuranceGuideDto.status !== undefined && {
               status: updateInsuranceGuideDto.status,
@@ -822,6 +829,12 @@ export class InsuranceGuidesService {
     if (types.size !== 1) {
       throw new BadRequestException(
         'procedures cannot mix consulta and sp_sadt tissGuideType',
+      );
+    }
+    const specialtyIds = new Set(dbProcedures.map((item) => item.specialtyId));
+    if (specialtyIds.size !== 1) {
+      throw new BadRequestException(
+        'procedures must belong to the same specialty',
       );
     }
     const tissGuideType = dbProcedures[0]!.tissGuideType;
