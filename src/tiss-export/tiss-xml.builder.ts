@@ -147,7 +147,10 @@ function guiaSpSadt(xml: XmlBuilder, payload: TissLotePayload, guide: TissGuideD
         prestadorId(xml, payload),
       ]),
       xml.leaf('nomeContratadoSolicitante', payload.clinic.legalName),
-      xml.branch('profissionalSolicitante', profissionalTags(xml, guide.professional)),
+      xml.branch(
+        'profissionalSolicitante',
+        profissionalTags(xml, guide.requester ?? guide.professional),
+      ),
     ]),
     xml.branch('dadosSolicitacao', [
       xml.leaf('dataSolicitacao', guide.authorizationDate),

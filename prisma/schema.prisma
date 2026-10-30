@@ -80,6 +80,16 @@ enum CouncilType {
   CRP
   COREN
   OTHER
+  CRESS
+  CRF
+  CREFONO
+  CREFITO
+  CRN
+  CRBIO
+  CRBM
+  CREF
+  CRMV
+  CRTR
 
   @@map("council_type_enum")
 }
@@ -226,6 +236,21 @@ model Specialty {
   procedures                    Procedure[]
 
   @@map("specialties")
+}
+
+model RequestingProfessional {
+  id            Int         @id @default(autoincrement())
+  name          String      @db.VarChar(150)
+  councilType   CouncilType @map("council_type")
+  councilNumber String      @map("council_number") @db.VarChar(30)
+  councilUf     String      @map("council_uf") @db.VarChar(2)
+  cbosCode      String      @map("cbos_code") @db.VarChar(6)
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  @@unique([councilType, councilNumber, councilUf, cbosCode], map: "requesting_professionals_identity_cbos_key")
+  @@index([name])
+  @@map("requesting_professionals")
 }
 
 model HealthProfessional {
@@ -419,7 +444,13 @@ model InsuranceGuide {
   isBilled             Boolean                    @default(false) @map("is_billed")
   status               InsuranceGuideStatus       @default(pending)
   tissGuideType        TissGuideType?             @map("tiss_guide_type")
-  participationDegree  String                     @default("12") @map("participation_degree") @db.VarChar(2)
+  participationDegree    String                     @default("12") @map("participation_degree") @db.VarChar(2)
+  executorCbosCode       String?                    @map("executor_cbos_code") @db.VarChar(6)
+  requesterName          String?                    @map("requester_name") @db.VarChar(150)
+  requesterCouncilType   CouncilType?               @map("requester_council_type")
+  requesterCouncilNumber String?                    @map("requester_council_number") @db.VarChar(30)
+  requesterCouncilUf     String?                    @map("requester_council_uf") @db.VarChar(2)
+  requesterCbosCode      String?                    @map("requester_cbos_code") @db.VarChar(6)
   healthPlan           HealthPlan                 @relation(fields: [healthPlanId], references: [id], onDelete: Restrict)
   patient              Patient                    @relation(fields: [patientId], references: [id], onDelete: Restrict)
   healthProfessional   HealthProfessional         @relation(fields: [healthProfessionalId], references: [id], onDelete: Restrict)

@@ -215,6 +215,22 @@ export function completeExtractedGuideFromTranscript(
       cbosCode,
       source: extracted.professional.source,
     },
+    requester: {
+      name:
+        extracted.requester.name ??
+        rejectLabelLikeName(
+          firstLine(
+            firstCapture(text, [
+              /nome do profissional solicitante[:\s]+([^\n]{3,80})/i,
+              /profissional solicitante[:\s]+([A-ZÁÉÍÓÚÃÕÇ][^\n]{3,80})/i,
+            ]) ?? '',
+          ),
+        ),
+      councilType: extracted.requester.councilType,
+      councilNumber: extracted.requester.councilNumber,
+      councilUf: extracted.requester.councilUf,
+      cbosCode: extracted.requester.cbosCode,
+    },
     procedures,
     guide: {
       operatorGuideNumber,

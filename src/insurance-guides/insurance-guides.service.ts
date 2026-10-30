@@ -31,7 +31,14 @@ import { TISS_PARTICIPATION_DEGREE_DEFAULT } from '../tiss-export/tiss-constants
 import { FileStorageService } from '../uploads/file-storage.service';
 import { UploadedFile } from '../uploads/uploaded-file';
 import { CreateInsuranceGuideDto } from './dto/create-insurance-guide.dto';
-import { guideDocumentFileName } from './guide-document-name';
+import { RequesterProfessionalDto } from './dto/requester-professional.dto';
+import { guideDocumentFileName, renameGuideDocumentFiles } from './guide-document-name';
+import {
+  assertExecutorCbos,
+  cbosCodesFromLinks,
+  requesterColumns,
+  type RequesterColumns,
+} from './guide-tiss-professionals';
 import { InsuranceGuideProcedureInputDto } from './dto/insurance-guide-procedure-input.dto';
 import {
   DEFAULT_SESSION_DURATION_MINUTES,
@@ -125,7 +132,7 @@ export class InsuranceGuidesService {
       createInsuranceGuideDto.healthProfessionalId,
       db,
     );
-    const { values: procedureValues, tissGuideType } =
+    const { values: procedureValues, tissGuideType, professionalLinks } =
       await this.ensureGuideProceduresValid(
         {
           healthPlanId: createInsuranceGuideDto.healthPlanId,
@@ -134,6 +141,21 @@ export class InsuranceGuidesService {
         },
         db,
       );
+    const executorCbosCode = assertExecutorCbos(
+      createInsuranceGuideDto.executorCbosCode,
+      cbosCodesFromLinks(professionalLinks),
+    );
+    const requester = requesterColumns(
+      createInsuranceGuideDto.requester,
+      tissGuideType,
+    );
+    if (
+      createInsuranceGuideDto.saveRequesterForNextAuthorizations &&
+      tissGuideType === TissGuideType.sp_sadt &&
+      createInsuranceGuideDto.requester
+    ) {
+      await this.upsertRequestingProfessional(db, createInsuranceGuideDto.requester);
+    }
 
     const expirationDate =
       createInsuranceGuideDto.expirationDate !== undefined
@@ -155,6 +177,8 @@ export class InsuranceGuidesService {
             createInsuranceGuideDto.participationDegree ??
             TISS_PARTICIPATION_DEGREE_DEFAULT,
           tissGuideType,
+          executorCbosCode,
+          ...requester,
           ...(createInsuranceGuideDto.guideNumber !== undefined && {
             guideNumber: this.normalizeGuideNumber(
               createInsuranceGuideDto.guideNumber,
@@ -286,6 +310,10 @@ export class InsuranceGuidesService {
 
     let procedureValues = new Map<number, Prisma.Decimal>();
     let tissGuideType = existing.tissGuideType;
+    let professionalLinks: Array<{
+      specialtyId: number;
+      specialty: { cbosCode: string | null } | null;
+    }> | null = null;
     if (shouldRevalidateProcedures) {
       const validated = await this.ensureGuideProceduresValid({
         healthPlanId,
@@ -294,10 +322,57 @@ export class InsuranceGuidesService {
       });
       procedureValues = validated.values;
       tissGuideType = validated.tissGuideType;
+      professionalLinks = validated.professionalLinks;
+    }
+
+    const resolvedType = tissGuideType ?? existing.tissGuideType;
+    let executorCbosCode: string | undefined;
+    if (
+      updateInsuranceGuideDto.executorCbosCode !== undefined ||
+      professionalLinks
+    ) {
+      const links =
+        professionalLinks ??
+        (await this.loadProfessionalLinks(healthProfessionalId));
+      const code =
+        updateInsuranceGuideDto.executorCbosCode ??
+        existing.executorCbosCode ??
+        '';
+      executorCbosCode = assertExecutorCbos(code, cbosCodesFromLinks(links));
+    }
+
+    let requester: RequesterColumns | undefined;
+    if (resolvedType === TissGuideType.consulta) {
+      requester = requesterColumns(undefined, TissGuideType.consulta);
+    } else if (resolvedType === TissGuideType.sp_sadt) {
+      if (updateInsuranceGuideDto.requester) {
+        requester = requesterColumns(
+          updateInsuranceGuideDto.requester,
+          TissGuideType.sp_sadt,
+        );
+      } else if (
+        !existing.requesterName ||
+        !existing.requesterCouncilType ||
+        !existing.requesterCouncilNumber ||
+        !existing.requesterCouncilUf ||
+        !existing.requesterCbosCode
+      ) {
+        requester = requesterColumns(undefined, TissGuideType.sp_sadt);
+      }
+    }
+    if (
+      updateInsuranceGuideDto.saveRequesterForNextAuthorizations &&
+      updateInsuranceGuideDto.requester &&
+      resolvedType === TissGuideType.sp_sadt
+    ) {
+      await this.upsertRequestingProfessional(
+        this.prisma,
+        updateInsuranceGuideDto.requester,
+      );
     }
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      const updated = await this.prisma.$transaction(async (tx) => {
         if (updateInsuranceGuideDto.procedures !== undefined) {
           await this.syncGuideProcedures(
             tx,
@@ -357,11 +432,20 @@ export class InsuranceGuidesService {
             ...(updateInsuranceGuideDto.status !== undefined && {
               status: updateInsuranceGuideDto.status,
             }),
+            ...(executorCbosCode !== undefined && { executorCbosCode }),
+            ...(requester !== undefined && requester),
             ...(shouldRevalidateProcedures && { tissGuideType }),
           },
           include: guideInclude,
         });
       });
+      const previousNumber = existing.guideNumber?.trim() || null;
+      const nextNumber = updated.guideNumber?.trim() || null;
+      if (previousNumber !== nextNumber && updated.documents.length > 0) {
+        await this.renameDocuments(updated.id, nextNumber, updated.documents);
+        return this.findOne(id);
+      }
+      return updated;
     } catch (error) {
       this.rethrowKnownPrismaError(error);
       throw error;
@@ -417,6 +501,30 @@ export class InsuranceGuidesService {
         mimeType,
         sizeBytes: file.size,
       },
+    });
+  }
+
+  private renameDocuments(
+    guideId: number,
+    guideNumber: string | null,
+    documents: Array<{
+      id: number;
+      originalName: string;
+      mimeType: string;
+      storageKey: string;
+    }>,
+  ) {
+    return renameGuideDocumentFiles({
+      guideId,
+      guideNumber,
+      documents,
+      copy: (sourceKey, destinationKey) =>
+        this.fileStorage.copy(sourceKey, destinationKey),
+      remove: (storageKey) => this.fileStorage.remove(storageKey),
+      update: (documentId, data) =>
+        this.prisma.insuranceGuideDocument
+          .update({ where: { id: documentId }, data })
+          .then(() => undefined),
     });
   }
 
@@ -805,6 +913,10 @@ export class InsuranceGuidesService {
   ): Promise<{
     values: Map<number, Prisma.Decimal>;
     tissGuideType: TissGuideType;
+    professionalLinks: Array<{
+      specialtyId: number;
+      specialty: { cbosCode: string | null } | null;
+    }>;
   }> {
     const procedureIds = params.procedures.map((item) => item.procedureId);
     const uniqueIds = new Set(procedureIds);
@@ -844,13 +956,15 @@ export class InsuranceGuidesService {
       );
     }
 
-    const professionalSpecialties =
-      await db.healthProfessionalSpecialty.findMany({
-        where: { healthProfessionalId: params.healthProfessionalId },
-        select: { specialtyId: true },
-      });
+    const professionalLinks = await db.healthProfessionalSpecialty.findMany({
+      where: { healthProfessionalId: params.healthProfessionalId },
+      select: {
+        specialtyId: true,
+        specialty: { select: { cbosCode: true } },
+      },
+    });
     const allowedSpecialtyIds = new Set(
-      professionalSpecialties.map((item) => item.specialtyId),
+      professionalLinks.map((item) => item.specialtyId),
     );
 
     for (const procedure of dbProcedures) {
@@ -879,7 +993,43 @@ export class InsuranceGuidesService {
     return {
       values: new Map(priced.map((item) => [item.procedureId, item.value])),
       tissGuideType,
+      professionalLinks,
     };
+  }
+
+  private loadProfessionalLinks(healthProfessionalId: number) {
+    return this.prisma.healthProfessionalSpecialty.findMany({
+      where: { healthProfessionalId },
+      select: {
+        specialtyId: true,
+        specialty: { select: { cbosCode: true } },
+      },
+    });
+  }
+
+  private async upsertRequestingProfessional(
+    db: GuideDb,
+    input: RequesterProfessionalDto,
+  ) {
+    const columns = requesterColumns(input, TissGuideType.sp_sadt);
+    await db.requestingProfessional.upsert({
+      where: {
+        councilType_councilNumber_councilUf_cbosCode: {
+          councilType: columns.requesterCouncilType!,
+          councilNumber: columns.requesterCouncilNumber!,
+          councilUf: columns.requesterCouncilUf!,
+          cbosCode: columns.requesterCbosCode!,
+        },
+      },
+      create: {
+        name: columns.requesterName!,
+        councilType: columns.requesterCouncilType!,
+        councilNumber: columns.requesterCouncilNumber!,
+        councilUf: columns.requesterCouncilUf!,
+        cbosCode: columns.requesterCbosCode!,
+      },
+      update: { name: columns.requesterName! },
+    });
   }
 
   private startOfUtcDay(date = new Date()): Date {

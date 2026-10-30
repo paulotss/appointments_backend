@@ -60,6 +60,16 @@ export const GEMINI_JSON_SCHEMA = objectSchema(
         'source',
       ],
     ),
+    requester: objectSchema(
+      {
+        name: nullableString(),
+        councilType: nullableString(),
+        councilNumber: nullableString(),
+        councilUf: nullableString(),
+        cbosCode: nullableString(),
+      },
+      ['name', 'councilType', 'councilNumber', 'councilUf', 'cbosCode'],
+    ),
     procedures: {
       type: 'ARRAY',
       items: objectSchema(
@@ -97,6 +107,7 @@ export const GEMINI_JSON_SCHEMA = objectSchema(
     'healthPlan',
     'patient',
     'professional',
+    'requester',
     'procedures',
     'guide',
   ],

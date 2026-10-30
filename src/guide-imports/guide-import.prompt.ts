@@ -4,11 +4,18 @@ const JSON_SHAPE = `{
   "patient": { "name": string | null, "cardNumber": string | null, "cardExpirationDate": string | null },
   "professional": {
     "name": string | null,
-    "councilType": "CRM" | "CRO" | "CRP" | "COREN" | "OTHER" | null,
+    "councilType": "CRM" | "CRO" | "CRP" | "COREN" | "CRN" | "CRF" | "CREFONO" | "CREFITO" | "CRESS" | "CRBIO" | "CRBM" | "CREF" | "CRMV" | "CRTR" | "OTHER" | null,
     "councilNumber": string | null,
     "councilUf": string | null,
     "cbosCode": string | null,
     "source": "executante" | "solicitante" | null
+  },
+  "requester": {
+    "name": string | null,
+    "councilType": "CRM" | "CRO" | "CRP" | "COREN" | "CRN" | "CRF" | "CREFONO" | "CREFITO" | "CRESS" | "CRBIO" | "CRBM" | "CREF" | "CRMV" | "CRTR" | "OTHER" | null,
+    "councilNumber": string | null,
+    "councilUf": string | null,
+    "cbosCode": string | null
   },
   "procedures": [
     {
@@ -35,7 +42,8 @@ const FIELD_RULES = `Regras (obrigatórias):
 - NÃO copie títulos do formulário. "Guia de Consulta", "Guia de SP/SADT", "Padrão TISS", "TISS", "Consulta" e "SP/SADT" NÃO são plano de saúde, paciente, profissional nem procedimento.
 - healthPlan.name = OPERADORA (logo ou nome: Unimed, CASSI, Amil, Bradesco, Geap, SulAmérica, etc.). healthPlan.registroAns = "Registro ANS" (somente os 6 dígitos). Se só houver o título da guia, name = null.
 - patient.name = "Nome do Beneficiário" (campo 7). patient.cardNumber = "Número da Carteira" (campo 4). Validade da carteira só se estiver preenchida. Datas em YYYY-MM-DD (também aceite DD/MM/AAAA).
-- professional.name = NOME DE PESSOA no campo 12 (Nome do Profissional Executante), conselho no 13, número no 14, UF no 15, CBO no 16. Na SP/SADT prefira o EXECUTANTE; se vazio, use o SOLICITANTE e source="solicitante". "Profissional executante" / "Nome do profissional" são rótulos, não nomes. councilType: CRM, CRO, CRP, COREN ou OTHER.
+- professional.name = NOME DE PESSOA do profissional EXECUTANTE (consulta: campos 12 a 16; SP/SADT: equipe executante). Conselho, número, UF e CBO do executante. Se o executante estiver vazio na SP/SADT, use o solicitante e source="solicitante". "Profissional executante" / "Nome do profissional" são rótulos, não nomes. councilType: CRM, CRO, CRP, COREN, CRN, CRF, CREFONO, CREFITO, CRESS, CRBIO, CRBM, CREF, CRMV, CRTR ou OTHER.
+- requester = profissional SOLICITANTE da SP/SADT (nome completo, conselho, número, UF e CBOS). Não copie o executante para requester. Em guia de consulta, deixe todos os campos de requester null.
 - Procedimentos: na guia de consulta o código TUSS está no campo 21 (Código do Procedimento, 8 dígitos, ex. 10101012). A descrição costuma estar no campo 23 (Observação/Justificativa), NÃO ao lado do código. Na SP/SADT, leia as linhas da tabela de procedimentos. Ignore grade de execução vazia. authorizedQuantity = quantidade autorizada; se só houver solicitada, copie para authorizedQuantity.
 - providerGuideNumber = campo 2 (Nº Guia no Prestador; na CASSI fica no canto superior direito). operatorGuideNumber = campo 3 (Número da Guia atribuído pela operadora). Extraia os dois sempre que ambos existirem; não omita o campo 2.
 - attendanceDate = campo 18 (Data do Atendimento), formato YYYY-MM-DD.

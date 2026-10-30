@@ -42,6 +42,7 @@ export interface TissGuideData {
   attendanceDate: string;
   participationDegree: string;
   professional: TissProfessionalData;
+  requester: TissProfessionalData | null;
   procedures: TissProcedureItem[];
 }
 

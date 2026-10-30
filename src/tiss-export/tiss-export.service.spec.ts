@@ -227,6 +227,12 @@ describe('TissExportService.exportBatch', () => {
             expirationDate: new Date('2026-09-01T00:00:00.000Z'),
             authorizationPassword: 'SENHA1',
             participationDegree: '06',
+            executorCbosCode: null,
+            requesterName: 'ANA PAULA LARA BARCELOS',
+            requesterCouncilType: 'CRM',
+            requesterCouncilNumber: '16906',
+            requesterCouncilUf: 'DF',
+            requesterCbosCode: '225120',
             patient: {
               insuranceCards: [{ healthPlanId: 3, cardNumber: '000111' }],
             },
@@ -290,6 +296,9 @@ describe('TissExportService.exportBatch', () => {
     expect(xml).toContain('<ans:sequencialItem>5</ans:sequencialItem>');
     expect(xml).toContain('<ans:grauPart>06</ans:grauPart>');
     expect(xml).toContain('<ans:CBOS>225125</ans:CBOS>');
+    expect(xml).toContain('<ans:nomeProfissional>ANA PAULA LARA BARCELOS</ans:nomeProfissional>');
+    expect(xml).toContain('<ans:CBOS>225120</ans:CBOS>');
+    expect(xml).toContain('<ans:numeroConselhoProfissional>16906</ans:numeroConselhoProfissional>');
   });
 
   it('rejects a guide whose procedures belong to different specialties', async () => {

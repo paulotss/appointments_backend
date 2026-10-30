@@ -5,6 +5,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsIn,
@@ -19,6 +20,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { TISS_PARTICIPATION_DEGREES } from '../../tiss-export/tiss-constants';
+import { RequesterProfessionalDto } from '../../insurance-guides/dto/requester-professional.dto';
 
 export class CommitGuideImportProcedureDto {
   @ApiProperty({ example: 1 })
@@ -123,6 +125,22 @@ export class CommitGuideImportDto {
   @IsInt()
   @Min(1)
   healthProfessionalId!: number;
+
+  @ApiProperty({ example: '225125' })
+  @IsString()
+  @Matches(/^\d{6}$/)
+  executorCbosCode!: string;
+
+  @ApiPropertyOptional({ type: RequesterProfessionalDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RequesterProfessionalDto)
+  requester?: RequesterProfessionalDto;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  saveRequesterForNextAuthorizations?: boolean;
 
   @ApiProperty({ type: [CommitGuideImportProcedureDto] })
   @IsArray()

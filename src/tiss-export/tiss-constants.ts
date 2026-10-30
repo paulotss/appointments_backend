@@ -38,10 +38,4 @@ export function isTissParticipationDegree(
   return (TISS_PARTICIPATION_DEGREES as readonly string[]).includes(value);
 }
 
-export const COUNCIL_TYPE_TO_TISS: Record<string, string> = {
-  CRM: '06',
-  CRO: '08',
-  CRP: '09',
-  COREN: '02',
-  OTHER: '10',
-};
+export { COUNCIL_TYPE_TO_TISS } from '../common/tiss-councils';

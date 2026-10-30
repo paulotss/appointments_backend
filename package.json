@@ -24,6 +24,7 @@
     "prisma:db:push": "prisma db push",
     "prisma:seed": "prisma db seed",
     "prisma:studio": "prisma studio",
+    "guides:rename-documents": "ts-node --esm src/insurance-guides/rename-guide-documents.cli.ts",
     "docker:dev:up": "docker compose -p appointments_backend_dev -f docker-compose.dev.yml up --build",
     "docker:dev:down": "docker compose -p appointments_backend_dev -f docker-compose.dev.yml down",
     "docker:prod:up": "docker compose -p appointments_backend_prod -f docker-compose.prod.yml up --build -d",

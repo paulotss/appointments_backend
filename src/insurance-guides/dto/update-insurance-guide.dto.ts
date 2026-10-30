@@ -4,12 +4,14 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsIn,
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
   MinLength,
@@ -17,6 +19,7 @@ import {
 } from 'class-validator';
 import { TISS_PARTICIPATION_DEGREES } from '../../tiss-export/tiss-constants';
 import { InsuranceGuideProcedureInputDto } from './insurance-guide-procedure-input.dto';
+import { RequesterProfessionalDto } from './requester-professional.dto';
 
 export class UpdateInsuranceGuideDto {
   @ApiPropertyOptional({ example: 1 })
@@ -108,4 +111,21 @@ export class UpdateInsuranceGuideDto {
   @IsOptional()
   @IsEnum(InsuranceGuideStatus)
   status?: InsuranceGuideStatus;
+
+  @ApiPropertyOptional({ example: '225125' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{6}$/, { message: 'executorCbosCode must have 6 digits' })
+  executorCbosCode?: string;
+
+  @ApiPropertyOptional({ type: RequesterProfessionalDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RequesterProfessionalDto)
+  requester?: RequesterProfessionalDto;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  saveRequesterForNextAuthorizations?: boolean;
 }

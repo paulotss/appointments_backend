@@ -83,6 +83,12 @@ export class GuideImportsService {
           ...(dto.expirationDate !== undefined && {
             expirationDate: dto.expirationDate,
           }),
+          executorCbosCode: dto.executorCbosCode,
+          ...(dto.requester !== undefined && { requester: dto.requester }),
+          ...(dto.saveRequesterForNextAuthorizations !== undefined && {
+            saveRequesterForNextAuthorizations:
+              dto.saveRequesterForNextAuthorizations,
+          }),
         },
         tx,
         currentUser,
