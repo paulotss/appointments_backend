@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { normalizeName } from '../common/normalize-name';
+import { isTissCbosCode } from '../common/tiss-cbos';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSpecialtyDto } from './dto/create-specialty.dto';
 import { UpdateSpecialtyDto } from './dto/update-specialty.dto';
@@ -9,6 +10,7 @@ export class SpecialtiesService {
   constructor(private readonly prisma: PrismaService) {}
 
   create(createSpecialtyDto: CreateSpecialtyDto) {
+    this.assertCbos(createSpecialtyDto.cbosCode);
     return this.prisma.specialty.create({
       data: {
         ...createSpecialtyDto,
@@ -19,7 +21,7 @@ export class SpecialtiesService {
 
   findAll() {
     return this.prisma.specialty.findMany({
-      orderBy: { id: 'asc' },
+      orderBy: { name: 'asc' },
     });
   }
 
@@ -35,6 +37,9 @@ export class SpecialtiesService {
 
   async update(id: number, updateSpecialtyDto: UpdateSpecialtyDto) {
     await this.findOne(id);
+    if (updateSpecialtyDto.cbosCode !== undefined) {
+      this.assertCbos(updateSpecialtyDto.cbosCode);
+    }
 
     return this.prisma.specialty.update({
       where: { id },
@@ -51,5 +56,11 @@ export class SpecialtiesService {
     await this.findOne(id);
 
     return this.prisma.specialty.delete({ where: { id } });
+  }
+
+  private assertCbos(cbosCode: string) {
+    if (!isTissCbosCode(cbosCode)) {
+      throw new BadRequestException('cbosCode is not a TISS table 24 code');
+    }
   }
 }

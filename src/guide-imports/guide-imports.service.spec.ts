@@ -31,6 +31,7 @@ describe('GuideImportsService commit', () => {
       service.commit({
         healthPlanId: 99,
         healthProfessionalId: 1,
+        executorCbosCode: '225125',
         procedures: [{ procedureId: 1, authorizedQuantity: 1 }],
         patient: { mode: 'existing', patientId: 1 },
       }),
@@ -60,6 +61,7 @@ describe('GuideImportsService commit', () => {
       {
         healthPlanId: 1,
         healthProfessionalId: 2,
+        executorCbosCode: '225125',
         procedures: [{ procedureId: 9, authorizedQuantity: 8, usedQuantity: 8 }],
         patient: { mode: 'existing', patientId: 3 },
       },

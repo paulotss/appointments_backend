@@ -5,6 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import {
+  CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
@@ -64,6 +65,19 @@ export class FileStorageService implements OnModuleInit {
       }),
     );
     return key;
+  }
+
+  async copy(sourceKey: string, destinationKey: string): Promise<void> {
+    if (sourceKey === destinationKey) {
+      return;
+    }
+    await this.client.send(
+      new CopyObjectCommand({
+        Bucket: this.bucket,
+        Key: destinationKey,
+        CopySource: encodeURI(`${this.bucket}/${sourceKey}`),
+      }),
+    );
   }
 
   async getStream(storageKey: string): Promise<Readable> {

@@ -4,18 +4,21 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsIn,
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
 import { InsuranceGuideProcedureInputDto } from './insurance-guide-procedure-input.dto';
+import { RequesterProfessionalDto } from './requester-professional.dto';
 import { TISS_PARTICIPATION_DEGREES } from '../../tiss-export/tiss-constants';
 
 export class CreateInsuranceGuideDto {
@@ -105,4 +108,29 @@ export class CreateInsuranceGuideDto {
   @IsOptional()
   @IsEnum(InsuranceGuideStatus)
   status?: InsuranceGuideStatus;
+
+  @ApiProperty({
+    example: '225125',
+    description: 'CBOS do profissional executante, entre os CBOS das especialidades dele.',
+  })
+  @IsString()
+  @Matches(/^\d{6}$/, { message: 'executorCbosCode must have 6 digits' })
+  executorCbosCode!: string;
+
+  @ApiPropertyOptional({
+    type: RequesterProfessionalDto,
+    description: 'Obrigatorio em guias SP/SADT.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RequesterProfessionalDto)
+  requester?: RequesterProfessionalDto;
+
+  @ApiPropertyOptional({
+    description:
+      'Quando verdadeiro, grava o solicitante para reutilizar nas proximas autorizacoes.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  saveRequesterForNextAuthorizations?: boolean;
 }

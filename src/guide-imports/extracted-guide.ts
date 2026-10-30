@@ -22,6 +22,14 @@ export type ExtractedProfessional = {
   source: ProfessionalSource | null;
 };
 
+export type ExtractedRequester = {
+  name: string | null;
+  councilType: CouncilType | null;
+  councilNumber: string | null;
+  councilUf: string | null;
+  cbosCode: string | null;
+};
+
 export type ExtractedProcedure = {
   tissCode: string | null;
   description: string | null;
@@ -43,6 +51,7 @@ export type ExtractedGuide = {
   healthPlan: ExtractedHealthPlan;
   patient: ExtractedPatient;
   professional: ExtractedProfessional;
+  requester: ExtractedRequester;
   procedures: ExtractedProcedure[];
   guide: ExtractedGuideMeta;
 };
@@ -201,17 +210,38 @@ export function mapCouncilType(value: unknown): CouncilType | null {
   if (COUNCIL_TYPES.has(upper)) {
     return upper as CouncilType;
   }
-  if (upper.includes('CRM') || upper.includes('MEDICINA')) {
-    return CouncilType.CRM;
-  }
-  if (upper.includes('CRO') || upper.includes('ODONTO')) {
-    return CouncilType.CRO;
-  }
-  if (upper.includes('CRP') || upper.includes('PSICO')) {
-    return CouncilType.CRP;
-  }
-  if (upper.includes('COREN') || upper.includes('ENFERM')) {
-    return CouncilType.COREN;
+  const aliases: Array<[string, CouncilType]> = [
+    ['CREFONO', CouncilType.CREFONO],
+    ['FONOAUDIO', CouncilType.CREFONO],
+    ['CREFITO', CouncilType.CREFITO],
+    ['FISIOTERAP', CouncilType.CREFITO],
+    ['CRMV', CouncilType.CRMV],
+    ['VETERIN', CouncilType.CRMV],
+    ['CRBIO', CouncilType.CRBIO],
+    ['BIOLOG', CouncilType.CRBIO],
+    ['CRBM', CouncilType.CRBM],
+    ['BIOMED', CouncilType.CRBM],
+    ['CRESS', CouncilType.CRESS],
+    ['SERVICOSOCIAL', CouncilType.CRESS],
+    ['CRTR', CouncilType.CRTR],
+    ['RADIOLOGIA', CouncilType.CRTR],
+    ['CRN', CouncilType.CRN],
+    ['NUTRI', CouncilType.CRN],
+    ['CRF', CouncilType.CRF],
+    ['FARMAC', CouncilType.CRF],
+    ['CREF', CouncilType.CREF],
+    ['EDUCACAOFISICA', CouncilType.CREF],
+    ['COREN', CouncilType.COREN],
+    ['ENFERM', CouncilType.COREN],
+    ['CRM', CouncilType.CRM],
+    ['MEDICINA', CouncilType.CRM],
+    ['CRO', CouncilType.CRO],
+    ['ODONTO', CouncilType.CRO],
+    ['CRP', CouncilType.CRP],
+    ['PSICO', CouncilType.CRP],
+  ];
+  for (const [token, council] of aliases) {
+    if (upper.includes(token)) return council;
   }
   return null;
 }
@@ -267,6 +297,13 @@ export function emptyExtractedGuide(): ExtractedGuide {
       cbosCode: null,
       source: null,
     },
+    requester: {
+      name: null,
+      councilType: null,
+      councilNumber: null,
+      councilUf: null,
+      cbosCode: null,
+    },
     procedures: [],
     guide: {
       operatorGuideNumber: null,
@@ -321,11 +358,25 @@ export function parseExtractedGuideResponse(raw: string): {
   }
 }
 
+function parseRequester(requester: Record<string, unknown>): ExtractedRequester {
+  const councilNumber = nullableText(requester.councilNumber);
+  const uf = (nullableText(requester.councilUf) ?? '').toUpperCase();
+  const cbosDigits = digitsOnly(nullableText(requester.cbosCode) ?? '');
+  return {
+    name: rejectLabelLikeName(nullableText(requester.name)),
+    councilType: mapCouncilType(requester.councilType),
+    councilNumber,
+    councilUf: UF_SET.has(uf) ? uf : null,
+    cbosCode: cbosDigits.length === 6 ? cbosDigits : null,
+  };
+}
+
 export function sanitizeExtractedGuide(input: unknown): ExtractedGuide {
   const root = asRecord(input);
   const healthPlan = asRecord(root.healthPlan);
   const patient = asRecord(root.patient);
   const professional = asRecord(root.professional);
+  const requester = asRecord(root.requester);
   const guide = asRecord(root.guide);
   const rawProcedures = Array.isArray(root.procedures) ? root.procedures : [];
 
@@ -375,6 +426,7 @@ export function sanitizeExtractedGuide(input: unknown): ExtractedGuide {
       cbosCode: cbosDigits.length === 6 ? cbosDigits : null,
       source: mapProfessionalSource(professional.source),
     },
+    requester: parseRequester(requester),
     procedures,
     guide: {
       operatorGuideNumber: nullableText(guide.operatorGuideNumber),

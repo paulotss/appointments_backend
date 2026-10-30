@@ -130,10 +130,14 @@ export class TissExportService {
         errors.push(`Guia ${label}: paciente sem carteira deste plano.`);
       }
 
-      const professional = {
-        ...this.mapProfessional(guide.healthProfessional, errors, label, kind),
-        cbosCode: this.resolveGuideCbos(guide.procedures, errors, label),
-      };
+      const mapped = this.mapProfessional(guide.healthProfessional, errors, label, kind);
+      const storedCbos = guide.executorCbosCode?.replace(/\D/g, '') ?? '';
+      const cbosCode =
+        storedCbos.length === 6
+          ? storedCbos
+          : this.resolveGuideCbos(guide.procedures, errors, label);
+      const professional = { ...mapped, cbosCode };
+      const requester = this.mapRequester(guide, errors, label, kind);
 
       const used = guide.procedures.filter((item) => item.usedQuantity > 0);
       if (used.length === 0) {
@@ -197,6 +201,7 @@ export class TissExportService {
         participationDegree:
           guide.participationDegree ?? TISS_PARTICIPATION_DEGREE_DEFAULT,
         professional,
+        requester,
         procedures,
       });
     }
@@ -288,6 +293,45 @@ export class TissExportService {
       councilNumber: professional.councilNumber.trim(),
       councilUf,
       cpf,
+    };
+  }
+
+  private mapRequester(
+    guide: {
+      requesterName: string | null;
+      requesterCouncilType: TissProfessionalData['councilType'] | null;
+      requesterCouncilNumber: string | null;
+      requesterCouncilUf: string | null;
+      requesterCbosCode: string | null;
+    },
+    errors: string[],
+    label: string,
+    kind: TissGuideType | null,
+  ): TissProfessionalData | null {
+    if (kind !== TissGuideType.sp_sadt) return null;
+    const name = guide.requesterName?.trim() ?? '';
+    const councilNumber = guide.requesterCouncilNumber?.trim() ?? '';
+    const councilUf = guide.requesterCouncilUf?.trim().toUpperCase() ?? '';
+    const cbosCode = guide.requesterCbosCode?.replace(/\D/g, '') ?? '';
+    if (
+      !name ||
+      !guide.requesterCouncilType ||
+      !councilNumber ||
+      !isBrazilianUf(councilUf) ||
+      cbosCode.length !== 6
+    ) {
+      errors.push(
+        `Guia ${label}: informe o profissional solicitante (nome, conselho, número, UF e CBOS).`,
+      );
+      return null;
+    }
+    return {
+      name,
+      councilType: guide.requesterCouncilType,
+      councilNumber,
+      councilUf,
+      cbosCode,
+      cpf: '',
     };
   }
 

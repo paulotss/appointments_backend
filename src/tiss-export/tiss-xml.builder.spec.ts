@@ -47,6 +47,7 @@ const basePayload: TissLotePayload = {
         cbosCode: '225142',
         cpf: '12345678901',
       },
+      requester: null,
       procedures: [
         {
           tissCode: '10101012',
@@ -71,6 +72,7 @@ describe('buildLoteXml', () => {
     expect(xml).not.toContain('<ans:equipeSadt>');
     expect(xml).not.toContain('<ans:grauPart>');
     expect(xml).toContain('<ans:UF>35</ans:UF>');
+    expect(xml).not.toContain('<ans:profissionalSolicitante>');
     expect(xml).toContain(
       '<ans:dadosAtendimento>' +
         '<ans:regimeAtendimento>01</ans:regimeAtendimento>' +
@@ -134,6 +136,14 @@ describe('buildLoteXml', () => {
           ...basePayload.guides[0]!,
           kind: TissGuideType.sp_sadt,
           authorizationPassword: 'SENHA1',
+          requester: {
+            name: 'ANA PAULA LARA BARCELOS',
+            councilType: 'CRM',
+            councilNumber: '16906',
+            councilUf: 'DF',
+            cbosCode: '225125',
+            cpf: '',
+          },
           procedures: [
             {
               tissCode: '40304361',
@@ -167,6 +177,15 @@ describe('buildLoteXml', () => {
         '<ans:CBOS>225142</ans:CBOS>' +
         '</ans:equipeSadt>',
     );
+    expect(xml).toContain(
+      '<ans:profissionalSolicitante>' +
+        '<ans:nomeProfissional>ANA PAULA LARA BARCELOS</ans:nomeProfissional>' +
+        '<ans:conselhoProfissional>06</ans:conselhoProfissional>' +
+        '<ans:numeroConselhoProfissional>16906</ans:numeroConselhoProfissional>' +
+        '<ans:UF>53</ans:UF>' +
+        '<ans:CBOS>225125</ans:CBOS>' +
+        '</ans:profissionalSolicitante>',
+    );
     expect(xml).not.toContain('<ans:profissionalExecutante>');
   });
 });
@@ -189,6 +208,14 @@ describe('buildExportFiles', () => {
           id: 2,
           kind: TissGuideType.sp_sadt,
           guideNumber: 'G-2',
+          requester: {
+            name: 'ANA PAULA LARA BARCELOS',
+            councilType: 'CRM',
+            councilNumber: '16906',
+            councilUf: 'DF',
+            cbosCode: '225125',
+            cpf: '',
+          },
           procedures: [
             {
               tissCode: '40304361',

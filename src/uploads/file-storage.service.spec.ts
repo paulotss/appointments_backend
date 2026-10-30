@@ -46,6 +46,19 @@ describe('FileStorageService', () => {
     expect(key).toBe('guides/7/123_GUIA_7.png');
   });
 
+  it('copies an object to a new key', async () => {
+    send.mockResolvedValue({});
+    await service.copy('guides/7/old.jpg', 'guides/7/1870872796_GUIA_doc1.jpg');
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          Key: 'guides/7/1870872796_GUIA_doc1.jpg',
+          CopySource: encodeURI('seraphis/guides/7/old.jpg'),
+        }),
+      }),
+    );
+  });
+
   it('returns a readable stream for an existing object', async () => {
     const body = Readable.from([Buffer.from('arquivo')]);
     send.mockResolvedValue({ Body: body });

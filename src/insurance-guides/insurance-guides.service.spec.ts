@@ -48,7 +48,7 @@ describe('InsuranceGuidesService guideNumber uniqueness', () => {
       { id: 9, specialtyId: 4, tissGuideType: 'consulta' },
     ]);
     prisma.healthProfessionalSpecialty.findMany.mockResolvedValue([
-      { specialtyId: 4 },
+      { specialtyId: 4, specialty: { cbosCode: '225125' } },
     ]);
     prisma.healthPlanProcedure.findMany.mockResolvedValue([
       { procedureId: 9, value: 80 },
@@ -63,6 +63,7 @@ describe('InsuranceGuidesService guideNumber uniqueness', () => {
         healthPlanId: 1,
         patientId: 2,
         healthProfessionalId: 3,
+        executorCbosCode: '225125',
         guideNumber: 'ABC-1',
         procedures: [{ procedureId: 9, authorizedQuantity: 1 }],
       }),
@@ -119,7 +120,7 @@ describe('InsuranceGuidesService tissGuideType homogeneity', () => {
     prisma.patient.findUnique.mockResolvedValue({ id: 2 });
     prisma.healthProfessional.findUnique.mockResolvedValue({ id: 3 });
     prisma.healthProfessionalSpecialty.findMany.mockResolvedValue([
-      { specialtyId: 4 },
+      { specialtyId: 4, specialty: { cbosCode: '225125' } },
     ]);
   });
 
@@ -134,6 +135,7 @@ describe('InsuranceGuidesService tissGuideType homogeneity', () => {
         healthPlanId: 1,
         patientId: 2,
         healthProfessionalId: 3,
+        executorCbosCode: '225125',
         procedures: [
           { procedureId: 9, authorizedQuantity: 1 },
           { procedureId: 10, authorizedQuantity: 1 },
@@ -159,6 +161,7 @@ describe('InsuranceGuidesService tissGuideType homogeneity', () => {
         healthPlanId: 1,
         patientId: 2,
         healthProfessionalId: 3,
+        executorCbosCode: '225125',
         procedures: [
           { procedureId: 9, authorizedQuantity: 1 },
           { procedureId: 10, authorizedQuantity: 1 },
@@ -180,6 +183,7 @@ describe('InsuranceGuidesService tissGuideType homogeneity', () => {
         healthPlanId: 1,
         patientId: 2,
         healthProfessionalId: 3,
+        executorCbosCode: '225125',
         procedures: [
           { procedureId: 9, authorizedQuantity: 1 },
           { procedureId: 11, authorizedQuantity: 1 },
@@ -204,6 +208,7 @@ describe('InsuranceGuidesService manual used quantity', () => {
       findMany: jest.fn(),
       count: jest.fn(),
     },
+    requestingProfessional: { upsert: jest.fn() },
   };
   const fileStorage = { remove: jest.fn(), saveGuideFile: jest.fn(), getStream: jest.fn() };
   const service = new InsuranceGuidesService(
@@ -223,7 +228,7 @@ describe('InsuranceGuidesService manual used quantity', () => {
       { id: 9, specialtyId: 4, tissGuideType: 'consulta' },
     ]);
     prisma.healthProfessionalSpecialty.findMany.mockResolvedValue([
-      { specialtyId: 4 },
+      { specialtyId: 4, specialty: { cbosCode: '225125' } },
     ]);
     prisma.healthPlanProcedure.findMany.mockResolvedValue([
       { procedureId: 9, value: 80 },
@@ -239,6 +244,7 @@ describe('InsuranceGuidesService manual used quantity', () => {
         healthPlanId: 1,
         patientId: 2,
         healthProfessionalId: 3,
+        executorCbosCode: '225125',
         procedures: [{ procedureId: 9, authorizedQuantity: 10, usedQuantity: 4 }],
       },
       undefined,
@@ -269,6 +275,7 @@ describe('InsuranceGuidesService manual used quantity', () => {
         healthPlanId: 1,
         patientId: 2,
         healthProfessionalId: 3,
+        executorCbosCode: '225125',
         procedures: [{ procedureId: 9, authorizedQuantity: 10, usedQuantity: 4 }],
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -282,6 +289,7 @@ describe('InsuranceGuidesService manual used quantity', () => {
           healthPlanId: 1,
           patientId: 2,
           healthProfessionalId: 3,
+          executorCbosCode: '225125',
           procedures: [{ procedureId: 9, authorizedQuantity: 2, usedQuantity: 5 }],
         },
         undefined,
@@ -296,6 +304,7 @@ describe('InsuranceGuidesService manual used quantity', () => {
       healthPlanId: 1,
       patientId: 2,
       healthProfessionalId: 3,
+      executorCbosCode: '225125',
       procedures: [{ procedureId: 9, authorizedQuantity: 1 }],
     });
 
@@ -306,6 +315,58 @@ describe('InsuranceGuidesService manual used quantity', () => {
             create: [expect.objectContaining({ usedQuantity: 0 })],
           },
         }),
+      }),
+    );
+  });
+
+  it('saves the same requesting professional twice when the CBOS differs', async () => {
+    prisma.procedure.findMany.mockResolvedValue([
+      { id: 9, specialtyId: 4, tissGuideType: 'sp_sadt' },
+    ]);
+    const requester = {
+      name: 'Ana Paula Lara Barcelos',
+      councilType: 'CRM' as const,
+      councilNumber: '16906',
+      councilUf: 'DF',
+      cbosCode: '225125',
+    };
+    await service.create({
+      healthPlanId: 1,
+      patientId: 2,
+      healthProfessionalId: 3,
+      executorCbosCode: '225125',
+      requester,
+      saveRequesterForNextAuthorizations: true,
+      procedures: [{ procedureId: 9, authorizedQuantity: 1 }],
+    });
+    await service.create({
+      healthPlanId: 1,
+      patientId: 2,
+      healthProfessionalId: 3,
+      executorCbosCode: '225125',
+      requester: { ...requester, cbosCode: '225120' },
+      saveRequesterForNextAuthorizations: true,
+      procedures: [{ procedureId: 9, authorizedQuantity: 1 }],
+    });
+
+    expect(prisma.requestingProfessional.upsert).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          councilType_councilNumber_councilUf_cbosCode: expect.objectContaining({
+            cbosCode: '225125',
+          }),
+        },
+      }),
+    );
+    expect(prisma.requestingProfessional.upsert).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          councilType_councilNumber_councilUf_cbosCode: expect.objectContaining({
+            cbosCode: '225120',
+          }),
+        },
       }),
     );
   });
