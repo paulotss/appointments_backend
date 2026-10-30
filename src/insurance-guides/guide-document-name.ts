@@ -48,6 +48,18 @@ export interface GuideDocumentIdentity {
   storageKey: string;
 }
 
+export function isMissingStorageObject(error: unknown): boolean {
+  if (error == null || typeof error !== 'object') {
+    return false;
+  }
+  const record = error as { name?: string; Code?: string; message?: string };
+  return (
+    record.name === 'NoSuchKey' ||
+    record.Code === 'NoSuchKey' ||
+    record.message === 'The specified key does not exist.'
+  );
+}
+
 export async function renameGuideDocumentFiles(params: {
   guideId: number;
   guideNumber: string | null;
@@ -58,6 +70,7 @@ export async function renameGuideDocumentFiles(params: {
     id: number,
     data: { originalName: string; storageKey: string },
   ) => Promise<void>;
+  onMissing?: (document: GuideDocumentIdentity) => void;
 }): Promise<number> {
   const planned = plannedGuideDocumentNames(
     params.documents,
@@ -81,23 +94,38 @@ export async function renameGuideDocumentFiles(params: {
     )}`,
   }));
 
+  const ready: typeof staged = [];
   for (const document of staged) {
-    if (document.storageKey !== document.tempKey) {
+    if (document.storageKey === document.tempKey) {
+      ready.push(document);
+      continue;
+    }
+    try {
       await params.copy(document.storageKey, document.tempKey);
+      ready.push(document);
+    } catch (error) {
+      if (!isMissingStorageObject(error)) {
+        throw error;
+      }
+      params.onMissing?.(document);
     }
   }
-  for (const document of staged) {
+  if (ready.length === 0) {
+    return 0;
+  }
+
+  for (const document of ready) {
     await params.update(document.id, {
       originalName: document.fileName,
       storageKey: document.tempKey,
     });
   }
-  for (const document of staged) {
+  for (const document of ready) {
     if (document.storageKey !== document.tempKey) {
       await params.remove(document.storageKey);
     }
   }
-  for (const document of staged) {
+  for (const document of ready) {
     if (document.tempKey !== document.storageKeyTarget) {
       await params.copy(document.tempKey, document.storageKeyTarget);
     }
@@ -109,7 +137,7 @@ export async function renameGuideDocumentFiles(params: {
       await params.remove(document.tempKey);
     }
   }
-  return staged.length;
+  return ready.length;
 }
 
 function guideNumberPart(guideNumber: string | null, guideId: number): string {

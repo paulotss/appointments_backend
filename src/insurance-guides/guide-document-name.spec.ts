@@ -132,6 +132,59 @@ describe('renameGuideDocumentFiles', () => {
     expect(stored.has('guides/9/1870872796_GUIA_9.jpg')).toBe(false);
   });
 
+  it('skips a document whose storage object is missing and renames the others', async () => {
+    const stored = new Map<string, string>([['guides/9/foto.png', 'b']]);
+    const rows = [
+      {
+        id: 11,
+        originalName: 'foto.png',
+        mimeType: 'image/png',
+        storageKey: 'guides/9/foto.png',
+      },
+      {
+        id: 20,
+        originalName: '1870872796_GUIA_9.jpg',
+        mimeType: 'image/jpeg',
+        storageKey: 'guides/9/1870872796_GUIA_9.jpg',
+      },
+    ];
+    const missing: string[] = [];
+
+    const renamed = await renameGuideDocumentFiles({
+      guideId: 9,
+      guideNumber: '1870872796',
+      documents: rows,
+      copy: async (source, destination) => {
+        const body = stored.get(source);
+        if (body == null) {
+          throw Object.assign(new Error('The specified key does not exist.'), {
+            name: 'NoSuchKey',
+          });
+        }
+        stored.set(destination, body);
+      },
+      remove: async (key) => {
+        stored.delete(key);
+      },
+      update: async (id, data) => {
+        const row = rows.find((item) => item.id === id);
+        if (!row) throw new Error(`missing row ${id}`);
+        row.originalName = data.originalName;
+        row.storageKey = data.storageKey;
+      },
+      onMissing: (document) => missing.push(document.storageKey),
+    });
+
+    expect(renamed).toBe(1);
+    expect(missing).toEqual(['guides/9/1870872796_GUIA_9.jpg']);
+    expect(rows[0]).toMatchObject({
+      originalName: '1870872796_GUIA_doc1.png',
+      storageKey: 'guides/9/1870872796_GUIA_doc1.png',
+    });
+    expect(rows[1].originalName).toBe('1870872796_GUIA_9.jpg');
+    expect(stored.get('guides/9/1870872796_GUIA_doc1.png')).toBe('b');
+  });
+
   it('leaves documents that already follow the pattern', async () => {
     const copy = jest.fn();
     const renamed = await renameGuideDocumentFiles({

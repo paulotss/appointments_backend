@@ -48,6 +48,7 @@ async function main() {
   });
 
   let renamed = 0;
+  let missing = 0;
   for (const guide of guides) {
     const planned = plannedGuideDocumentNames(
       guide.documents,
@@ -95,12 +96,18 @@ async function main() {
         prisma.insuranceGuideDocument
           .update({ where: { id }, data })
           .then(() => undefined),
+      onMissing: (document) => {
+        missing += 1;
+        console.error(
+          `Arquivo ausente no armazenamento, guia ${label}: ${document.storageKey}`,
+        );
+      },
     });
   }
 
   console.log(
     apply
-      ? `Renomeados ${renamed} arquivo(s) em ${guides.length} guia(s) com documento.`
+      ? `Renomeados ${renamed} arquivo(s) em ${guides.length} guia(s) com documento. Ausentes no armazenamento: ${missing}.`
       : `Simulação: ${renamed} arquivo(s) seriam renomeados em ${guides.length} guia(s) com documento. Use --apply para gravar.`,
   );
   await prisma.$disconnect();
