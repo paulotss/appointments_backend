@@ -39,8 +39,80 @@ enum ServiceTokenScope {
   CALLS_WRITE
   AGENT_DATA_READ
   AGENT_DATA_WRITE
+  CLINIC_REGISTRY_READ
 
   @@map("service_token_scope")
+}
+
+enum ContactOrigin {
+  IN_PERSON
+  PHONE
+  WHATSAPP
+
+  @@map("contact_origin")
+}
+
+enum ContactSubjectRole {
+  PATIENT
+  GUARDIAN
+
+  @@map("contact_subject_role")
+}
+
+enum ContactVerificationStatus {
+  INFORMED
+  VERIFIED
+
+  @@map("contact_verification_status")
+}
+
+enum ContactVerificationProcedure {
+  DOCUMENT_PRESENTED
+  CALLBACK
+  IN_PERSON_CONFIRMATION
+  GUARDIAN_PRESENT
+  RECORDED_PROCEDURE
+
+  @@map("contact_verification_procedure")
+}
+
+enum CampaignSourceKey {
+  SAUDEVIANET
+  HIGIA
+
+  @@map("campaign_source_key")
+}
+
+enum CampaignAdminStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+
+  @@map("campaign_admin_status")
+}
+
+enum CampaignRecipientState {
+  ELIGIBLE
+  PENDING
+  UNAVAILABLE
+
+  @@map("campaign_recipient_state")
+}
+
+enum ConfirmationAuditAction {
+  CONTACT_INFORMED
+  CONTACT_VERIFIED
+  CONTACT_REVOKED
+  AUTHORIZATION_RECORDED
+  AUTHORIZATION_REVOKED
+  ASSOCIATION_RECORDED
+  CAMPAIGN_CREATED
+  CAMPAIGN_UPDATED
+  CAMPAIGN_SUBMITTED
+  CAMPAIGN_APPROVED
+  CAMPAIGN_REOPENED
+
+  @@map("confirmation_audit_action")
 }
 
 enum ContactMethod {
@@ -377,6 +449,7 @@ model Patient {
   files                PatientFile[]
   clinicalChart        PatientClinicalChart?
   clinicalEvolutions   ClinicalEvolution[]
+  contactSubjectAssociations ContactSubjectAssociation[]
 
   @@map("patients")
 }
@@ -697,6 +770,16 @@ model User {
   serviceAccessTokens      ServiceAccessToken[]
   patientFiles             PatientFile[]
   updatedClinicalCharts    PatientClinicalChart[]
+  contactVerificationsRecorded ContactVerification[] @relation("ContactVerificationRecorded")
+  contactVerificationsVerified ContactVerification[] @relation("ContactVerificationVerified")
+  contactVerificationsRevoked  ContactVerification[] @relation("ContactVerificationRevoked")
+  contactAuthorizationsRecorded ContactAuthorization[] @relation("ContactAuthorizationRecorded")
+  contactAuthorizationsRevoked  ContactAuthorization[] @relation("ContactAuthorizationRevoked")
+  contactSubjectAssociations  ContactSubjectAssociation[]
+  confirmationCampaignsCreated ConfirmationCampaign[] @relation("CampaignCreatedBy")
+  confirmationCampaignsApproved ConfirmationCampaign[] @relation("CampaignApprovedBy")
+  confirmationCampaignEvents ConfirmationCampaignEvent[]
+  confirmationAuditEvents  ConfirmationAuditEvent[]
 
   @@map("users")
 }
@@ -1140,4 +1223,140 @@ model BenefitNote {
 
   @@index([entitlementId])
   @@map("benefit_notes")
+}
+
+model ContactVerification {
+  id                    String                        @id
+  patientRef            String                        @map("patient_ref") @db.VarChar(128)
+  recipientRef          String                        @map("recipient_ref") @db.VarChar(128)
+  informedPhoneRef      String                        @map("informed_phone_ref") @db.VarChar(128)
+  verifiedPhoneRef      String?                       @map("verified_phone_ref") @db.VarChar(128)
+  role                  ContactSubjectRole
+  legalGuardianVerified Boolean                       @default(false) @map("legal_guardian_verified")
+  origin                ContactOrigin
+  procedure             ContactVerificationProcedure?
+  status                ContactVerificationStatus     @default(INFORMED)
+  evidenceRef           String?                       @map("evidence_ref") @db.VarChar(64)
+  recordedByUserId      Int                           @map("recorded_by_user_id")
+  recordedAt            DateTime                      @default(now()) @map("recorded_at") @db.Timestamp(3)
+  verifiedByUserId      Int?                          @map("verified_by_user_id")
+  verifiedAt            DateTime?                     @map("verified_at") @db.Timestamp(3)
+  revokedAt             DateTime?                     @map("revoked_at") @db.Timestamp(3)
+  revokedByUserId       Int?                          @map("revoked_by_user_id")
+  recordedBy            User                          @relation("ContactVerificationRecorded", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+  verifiedBy            User?                         @relation("ContactVerificationVerified", fields: [verifiedByUserId], references: [id], onDelete: Restrict)
+  revokedBy             User?                         @relation("ContactVerificationRevoked", fields: [revokedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([patientRef, status])
+  @@index([recordedByUserId])
+  @@map("contact_verifications")
+}
+
+model ContactAuthorization {
+  id               String    @id
+  patientRef       String    @map("patient_ref") @db.VarChar(128)
+  recipientRef     String    @map("recipient_ref") @db.VarChar(128)
+  purpose          String    @db.VarChar(64)
+  channel          String    @db.VarChar(64)
+  legalBasis       String    @map("legal_basis") @db.VarChar(64)
+  evidenceRef      String?   @map("evidence_ref") @db.VarChar(64)
+  validFrom        DateTime  @map("valid_from") @db.Timestamp(3)
+  expiresAt        DateTime  @map("expires_at") @db.Timestamp(3)
+  recordedByUserId Int       @map("recorded_by_user_id")
+  recordedAt       DateTime  @default(now()) @map("recorded_at") @db.Timestamp(3)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamp(3)
+  revokedByUserId  Int?      @map("revoked_by_user_id")
+  recordedBy       User      @relation("ContactAuthorizationRecorded", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+  revokedBy        User?     @relation("ContactAuthorizationRevoked", fields: [revokedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([patientRef])
+  @@index([recordedByUserId])
+  @@map("contact_authorizations")
+}
+
+model ContactSubjectAssociation {
+  id                 String   @id
+  patientRef         String   @unique @map("patient_ref") @db.VarChar(128)
+  higiaPatientId     Int?     @map("higia_patient_id")
+  associatedByUserId Int      @map("associated_by_user_id")
+  associatedAt       DateTime @default(now()) @map("associated_at") @db.Timestamp(3)
+  higiaPatient       Patient? @relation(fields: [higiaPatientId], references: [id], onDelete: Restrict)
+  associatedBy       User     @relation(fields: [associatedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([higiaPatientId])
+  @@index([associatedByUserId])
+  @@map("contact_subject_associations")
+}
+
+model ConfirmationCampaign {
+  id                     Int                  @id @default(autoincrement())
+  campaignDate           DateTime             @map("campaign_date") @db.Date
+  source                 CampaignSourceKey
+  status                 CampaignAdminStatus  @default(DRAFT)
+  appointmentsAnalyzed   Int                  @default(0) @map("appointments_analyzed")
+  eligibleRecipients     Int                  @default(0) @map("eligible_recipients")
+  pendingVerifications   Int                  @default(0) @map("pending_verifications")
+  unavailableRecipients  Int                  @default(0) @map("unavailable_recipients")
+  createdByUserId        Int                  @map("created_by_user_id")
+  approvedByUserId       Int?                 @map("approved_by_user_id")
+  approvedAt             DateTime?            @map("approved_at") @db.Timestamp(3)
+  createdAt              DateTime             @default(now()) @map("created_at") @db.Timestamp(3)
+  updatedAt              DateTime             @updatedAt @map("updated_at") @db.Timestamp(3)
+  createdBy              User                 @relation("CampaignCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  approvedBy             User?                @relation("CampaignApprovedBy", fields: [approvedByUserId], references: [id], onDelete: Restrict)
+  items                  ConfirmationCampaignItem[]
+  events                 ConfirmationCampaignEvent[]
+
+  @@unique([campaignDate, source])
+  @@index([status])
+  @@index([createdByUserId])
+  @@map("confirmation_campaigns")
+}
+
+model ConfirmationCampaignItem {
+  id              Int                     @id @default(autoincrement())
+  campaignId      Int                     @map("campaign_id")
+  appointmentRef  String                  @map("appointment_ref") @db.VarChar(96)
+  patientRef      String?                 @map("patient_ref") @db.VarChar(128)
+  recipientRef    String?                 @map("recipient_ref") @db.VarChar(128)
+  informedPhoneRef String?                @map("informed_phone_ref") @db.VarChar(128)
+  recipientState  CampaignRecipientState  @map("recipient_state")
+  reasonCode      String?                 @map("reason_code") @db.VarChar(64)
+  campaign        ConfirmationCampaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, appointmentRef])
+  @@index([recipientState])
+  @@map("confirmation_campaign_items")
+}
+
+model ConfirmationCampaignEvent {
+  id          Int                      @id @default(autoincrement())
+  campaignId  Int                      @map("campaign_id")
+  action      ConfirmationAuditAction
+  actorUserId Int                      @map("actor_user_id")
+  fromStatus  CampaignAdminStatus?     @map("from_status")
+  toStatus    CampaignAdminStatus?     @map("to_status")
+  createdAt   DateTime                 @default(now()) @map("created_at") @db.Timestamp(3)
+  campaign    ConfirmationCampaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  actor       User                     @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([campaignId, createdAt])
+  @@index([actorUserId])
+  @@map("confirmation_campaign_events")
+}
+
+model ConfirmationAuditEvent {
+  id          Int                     @id @default(autoincrement())
+  action      ConfirmationAuditAction
+  subjectType String                  @map("subject_type") @db.VarChar(32)
+  subjectId   String                  @map("subject_id") @db.VarChar(64)
+  patientRef  String?                 @map("patient_ref") @db.VarChar(128)
+  actorUserId Int                     @map("actor_user_id")
+  createdAt   DateTime                @default(now()) @map("created_at") @db.Timestamp(3)
+  actor       User                    @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([patientRef, createdAt])
+  @@index([subjectType, subjectId])
+  @@index([actorUserId])
+  @@map("confirmation_audit_events")
 }

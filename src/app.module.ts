@@ -9,6 +9,7 @@ import { BillingBatchesModule } from './billing-batches/billing-batches.module';
 import { CallsModule } from './calls/calls.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ClinicProfileModule } from './clinic-profile/clinic-profile.module';
+import { ConfirmationAdminModule } from './confirmation-admin/confirmation-admin.module';
 import { ClinicalAppointmentsModule } from './clinical-appointments/clinical-appointments.module';
 import { ClinicalRecordsModule } from './clinical-records/clinical-records.module';
 import { FinancialEntriesModule } from './financial-entries/financial-entries.module';
@@ -65,6 +66,7 @@ import { UsersModule } from './users/users.module';
     MessagesModule,
     AuthModule,
     ClinicProfileModule,
+    ConfirmationAdminModule,
     CategoriesModule,
     ProductsModule,
     SectorsModule,
