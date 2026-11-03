@@ -8,7 +8,10 @@ import {
 import { ConfirmationAdminService } from './confirmation-admin.service';
 import {
   AppointmentSourceRegistry,
+  CampaignContactClassifier,
+  HttpCampaignContactClassifier,
   defaultAppointmentSources,
+  httpCampaignSourceClient,
 } from './appointment-source';
 
 @Module({
@@ -22,7 +25,12 @@ import {
     ConfirmationAdminService,
     {
       provide: AppointmentSourceRegistry,
-      useFactory: () => defaultAppointmentSources(),
+      useFactory: () => defaultAppointmentSources(httpCampaignSourceClient()),
+    },
+    {
+      provide: CampaignContactClassifier,
+      useFactory: () =>
+        new HttpCampaignContactClassifier(httpCampaignSourceClient()),
     },
   ],
 })

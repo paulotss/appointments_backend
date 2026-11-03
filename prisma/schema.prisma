@@ -91,6 +91,16 @@ enum CampaignAdminStatus {
   @@map("campaign_admin_status")
 }
 
+enum CampaignConsultationState {
+  NOT_CONNECTED
+  READY
+  EMPTY
+  PARTIAL
+  FAILED
+
+  @@map("campaign_consultation_state")
+}
+
 enum CampaignRecipientState {
   ELIGIBLE
   PENDING
@@ -111,6 +121,7 @@ enum ConfirmationAuditAction {
   CAMPAIGN_SUBMITTED
   CAMPAIGN_APPROVED
   CAMPAIGN_REOPENED
+  ITEM_RECLASSIFIED
 
   @@map("confirmation_audit_action")
 }
@@ -1297,6 +1308,8 @@ model ConfirmationCampaign {
   eligibleRecipients     Int                  @default(0) @map("eligible_recipients")
   pendingVerifications   Int                  @default(0) @map("pending_verifications")
   unavailableRecipients  Int                  @default(0) @map("unavailable_recipients")
+  consultationState      CampaignConsultationState @default(NOT_CONNECTED) @map("consultation_state")
+  consultationReason     String?              @map("consultation_reason") @db.VarChar(64)
   createdByUserId        Int                  @map("created_by_user_id")
   approvedByUserId       Int?                 @map("approved_by_user_id")
   approvedAt             DateTime?            @map("approved_at") @db.Timestamp(3)
@@ -1316,12 +1329,17 @@ model ConfirmationCampaign {
 model ConfirmationCampaignItem {
   id              Int                     @id @default(autoincrement())
   campaignId      Int                     @map("campaign_id")
-  appointmentRef  String                  @map("appointment_ref") @db.VarChar(96)
-  patientRef      String?                 @map("patient_ref") @db.VarChar(128)
-  recipientRef    String?                 @map("recipient_ref") @db.VarChar(128)
-  informedPhoneRef String?                @map("informed_phone_ref") @db.VarChar(128)
-  recipientState  CampaignRecipientState  @map("recipient_state")
-  reasonCode      String?                 @map("reason_code") @db.VarChar(64)
+  appointmentRef   String                  @map("appointment_ref") @db.VarChar(128)
+  patientRef       String?                 @map("patient_ref") @db.VarChar(128)
+  recipientRef     String?                 @map("recipient_ref") @db.VarChar(128)
+  informedPhoneRef String?                 @map("informed_phone_ref") @db.VarChar(128)
+  professionalRef  String?                 @map("professional_ref") @db.VarChar(64)
+  appointmentTime  String?                 @map("appointment_time") @db.VarChar(8)
+  agendaRef        String?                 @map("agenda_ref") @db.VarChar(64)
+  sourceResolution String?                 @map("source_resolution") @db.VarChar(32)
+  isMinor          Boolean?                @map("is_minor")
+  recipientState   CampaignRecipientState  @map("recipient_state")
+  reasonCode       String?                 @map("reason_code") @db.VarChar(64)
   campaign        ConfirmationCampaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, appointmentRef])
