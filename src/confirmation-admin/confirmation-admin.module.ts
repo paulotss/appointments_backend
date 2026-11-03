@@ -8,9 +8,11 @@ import {
 import { ConfirmationAdminService } from './confirmation-admin.service';
 import {
   AppointmentSourceRegistry,
+  CAMPAIGN_IDENTITY,
   CampaignContactClassifier,
   HttpCampaignContactClassifier,
   defaultAppointmentSources,
+  httpCampaignIdentityClient,
   httpCampaignSourceClient,
 } from './appointment-source';
 
@@ -31,6 +33,10 @@ import {
       provide: CampaignContactClassifier,
       useFactory: () =>
         new HttpCampaignContactClassifier(httpCampaignSourceClient()),
+    },
+    {
+      provide: CAMPAIGN_IDENTITY,
+      useFactory: () => httpCampaignIdentityClient(),
     },
   ],
 })
