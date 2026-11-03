@@ -1075,6 +1075,48 @@ describe('ConfirmationAdminService', () => {
     );
     expect(calls).toEqual(['Ana']);
   });
+
+  it('separa falha de agenda dos agendamentos e não a torna apta', async () => {
+    const source = new SaudeVianetAppointmentSource({
+      load: async () => ({
+        appointmentDate: '2099-04-04',
+        state: 'partial',
+        reason: 'partial_consultation',
+        registry: 'unavailable',
+        items: [agendaItem(APPT_A, '09:30')],
+        failures: [
+          {
+            appointmentRef: `fail:v1:validation:${'a'.repeat(64)}`,
+            professionalRef: 'prof.ana',
+            appointmentTime: null,
+            agendaRef: 'agenda.falha',
+            patientRef: null,
+            recipientRef: null,
+            phoneRef: null,
+            isMinor: null,
+            resolution: 'ambiguous',
+            contactState: 'unavailable',
+            reasonCode: 'unexpected_response',
+          },
+        ],
+      }),
+      classify: async () => ({ items: [] }),
+    });
+    const created = await serviceFor(memory(), [source]).createCampaign(admin, {
+      campaignDate: '2099-04-04',
+      source: CampaignSourceKey.SAUDEVIANET,
+    });
+
+    expect(created.consultationState).toBe('PARTIAL');
+    expect(created.consultationReason).toBe('partial_consultation');
+    expect(created.appointmentsAnalyzed).toBe(1);
+    expect(created.technicalFailures).toBe(1);
+    expect(created.items).toHaveLength(2);
+    expect(created.eligibleRecipients).toBe(0);
+    expect(created.unavailableRecipients).toBe(0);
+    expect(created.pendingVerifications).toBe(1);
+    expect(created.dispatchEnabled).toBe(false);
+  });
 });
 
 function agendaItem(appointmentRef: string, appointmentTime: string) {

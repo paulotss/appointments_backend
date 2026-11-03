@@ -31,7 +31,9 @@ export type AppointmentSourceLoad =
       connected: true;
       availability: AppointmentSourceAvailability;
       reason: string | null;
+      registry: 'ready' | 'unavailable' | null;
       items: AppointmentSourceItem[];
+      failures?: AppointmentSourceItem[];
     };
 
 export interface AppointmentSource {
@@ -102,7 +104,9 @@ export class SaudeVianetAppointmentSource implements AppointmentSource {
         connected: true,
         availability: 'failed',
         reason,
+        registry: null,
         items: [],
+        failures: [],
       };
     }
   }
@@ -455,15 +459,32 @@ export function mapCampaignSource(payload: unknown): AppointmentSourceLoad {
   }
   const state = payload.state;
   const reason = typeof payload.reason === 'string' ? payload.reason : null;
+  const registry =
+    payload.registry === 'ready' || payload.registry === 'unavailable'
+      ? payload.registry
+      : null;
+  const mappedFailures = mapFailureList(payload.failures);
+  if (mappedFailures == null) {
+    return failed('unexpected_response');
+  }
   if (state === 'empty') {
-    return { connected: true, availability: 'empty', reason, items: [] };
+    return {
+      connected: true,
+      availability: 'empty',
+      reason,
+      registry,
+      items: [],
+      failures: [],
+    };
   }
   if (state === 'failed') {
     return {
       connected: true,
       availability: 'failed',
       reason: reason ?? 'query_failed',
+      registry,
       items: [],
+      failures: mappedFailures,
     };
   }
   if (state !== 'ready' && state !== 'partial') {
@@ -475,12 +496,37 @@ export function mapCampaignSource(payload: unknown): AppointmentSourceLoad {
   const items: AppointmentSourceItem[] = [];
   for (const raw of payload.items) {
     const item = mapItem(raw);
-    if (!item) {
+    if (!item || item.appointmentRef.startsWith('fail:')) {
       return failed('unexpected_response');
     }
     items.push(item);
   }
-  return { connected: true, availability: state, reason, items };
+  return {
+    connected: true,
+    availability: state,
+    reason,
+    registry,
+    items,
+    failures: mappedFailures,
+  };
+}
+
+function mapFailureList(raw: unknown): AppointmentSourceItem[] | null {
+  if (raw == null) {
+    return [];
+  }
+  if (!Array.isArray(raw)) {
+    return null;
+  }
+  const failures: AppointmentSourceItem[] = [];
+  for (const item of raw) {
+    const mapped = mapItem(item);
+    if (!mapped || !mapped.appointmentRef.startsWith('fail:')) {
+      return null;
+    }
+    failures.push(mapped);
+  }
+  return failures;
 }
 
 export function mapClassifiedContacts(payload: unknown): ClassifiedContact[] {
@@ -552,7 +598,14 @@ function mapItem(raw: unknown): AppointmentSourceItem | null {
 }
 
 function failed(reason: string): AppointmentSourceLoad {
-  return { connected: true, availability: 'failed', reason, items: [] };
+  return {
+    connected: true,
+    availability: 'failed',
+    reason,
+    registry: null,
+    items: [],
+    failures: [],
+  };
 }
 
 function optionalString(value: unknown): string | null {
