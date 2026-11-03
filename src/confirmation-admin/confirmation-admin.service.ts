@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
   Optional,
@@ -27,9 +28,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   AppointmentSourceLoad,
   AppointmentSourceRegistry,
+  CAMPAIGN_IDENTITY,
   CampaignContactClassifier,
   defaultAppointmentSources,
+  httpCampaignIdentityClient,
+  mapCampaignIdentity,
+  mapPatientSearch,
 } from './appointment-source';
+import type { CampaignIdentityClient } from './appointment-source';
 import {
   AssociateSubjectDto,
   CreateCampaignDto,
@@ -109,6 +115,9 @@ export class ConfirmationAdminService {
     private readonly clock: () => Date = () => new Date(),
     @Optional()
     private readonly classifier?: CampaignContactClassifier,
+    @Optional()
+    @Inject(CAMPAIGN_IDENTITY)
+    private readonly identity: CampaignIdentityClient = httpCampaignIdentityClient(),
   ) {}
 
   async informVerification(
@@ -509,7 +518,58 @@ export class ConfirmationAdminService {
   }
 
   async getCampaign(id: number) {
-    return this.presentCampaign(await this.findCampaign(id));
+    const row = await this.findCampaign(id);
+    return this.withIdentity(this.presentCampaign(row), row);
+  }
+
+  async searchPatients(principal: AuthPrincipal, name: string) {
+    await this.requireStaff(principal);
+    const rows = await this.prisma.confirmationCampaign.findMany({
+      where: { source: CampaignSourceKey.SAUDEVIANET },
+      orderBy: [{ campaignDate: 'desc' }, { id: 'desc' }],
+    });
+    const dates: string[] = [];
+    for (const row of rows) {
+      if (row.source !== CampaignSourceKey.SAUDEVIANET) {
+        continue;
+      }
+      const day = row.campaignDate.toISOString().slice(0, 10);
+      if (!dates.includes(day)) {
+        dates.push(day);
+      }
+      if (dates.length === 14) {
+        break;
+      }
+    }
+    if (dates.length === 0) {
+      return {
+        state: 'empty',
+        truncated: false,
+        people: [],
+        dispatchEnabled: false as const,
+      };
+    }
+    try {
+      const mapped = mapPatientSearch(
+        await this.identity.searchPatients(name.trim(), dates),
+      );
+      if (!mapped) {
+        return {
+          state: 'unavailable',
+          truncated: false,
+          people: [],
+          dispatchEnabled: false as const,
+        };
+      }
+      return { ...mapped, dispatchEnabled: false as const };
+    } catch {
+      return {
+        state: 'unavailable',
+        truncated: false,
+        people: [],
+        dispatchEnabled: false as const,
+      };
+    }
   }
 
   async replaceItems(
@@ -1050,6 +1110,61 @@ export class ConfirmationAdminService {
       approvedBy: row.approvedBy,
       dispatchEnabled: false,
     };
+  }
+
+  private async withIdentity(
+    campaign: ReturnType<ConfirmationAdminService['presentCampaign']>,
+    row: { source: CampaignSourceKey; campaignDate: Date },
+  ) {
+    const blank = campaign.items.map((item) => ({
+      ...item,
+      displayName: null,
+      maskedPhone: null,
+      professionalName: null,
+      phoneStatus: 'missing' as const,
+      identityStatus: 'unavailable' as const,
+    }));
+    if (row.source !== CampaignSourceKey.SAUDEVIANET) {
+      return { ...campaign, identityStatus: 'unavailable' as const, items: blank };
+    }
+    try {
+      const mapped = mapCampaignIdentity(
+        await this.identity.identify(campaign.campaignDate),
+      );
+      if (!mapped || mapped.state === 'unavailable') {
+        return { ...campaign, identityStatus: 'unavailable' as const, items: blank };
+      }
+      const byAppointment = new Map(
+        mapped.items.map((item) => [item.appointmentRef, item]),
+      );
+      return {
+        ...campaign,
+        identityStatus: mapped.state,
+        items: campaign.items.map((item) => {
+          const visual = byAppointment.get(item.appointmentRef);
+          if (!visual) {
+            return {
+              ...item,
+              displayName: null,
+              maskedPhone: null,
+              professionalName: null,
+              phoneStatus: 'missing' as const,
+              identityStatus: 'unavailable' as const,
+            };
+          }
+          return {
+            ...item,
+            displayName: visual.displayName,
+            maskedPhone: visual.maskedPhone,
+            professionalName: visual.professionalName,
+            phoneStatus: visual.phoneStatus,
+            identityStatus: visual.displayName ? ('ready' as const) : ('partial' as const),
+          };
+        }),
+      };
+    } catch {
+      return { ...campaign, identityStatus: 'unavailable' as const, items: blank };
+    }
   }
 
   private presentCampaign(

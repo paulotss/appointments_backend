@@ -32,6 +32,11 @@ export class PatientRefQueryDto {
   patientRef!: string;
 }
 
+export class SearchPatientsDto {
+  @Matches(/^[\p{L}][\p{L}\s'.-]{2,79}$/u)
+  name!: string;
+}
+
 export class InformVerificationDto {
   @Matches(PATIENT_REF)
   patientRef!: string;

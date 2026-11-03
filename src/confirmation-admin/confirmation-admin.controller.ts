@@ -25,6 +25,7 @@ import {
   InformVerificationDto,
   PatientRefQueryDto,
   RecordAuthorizationDto,
+  SearchPatientsDto,
   ReplaceCampaignItemsDto,
   VerifyVerificationDto,
 } from './dto/confirmation-admin.dto';
@@ -110,6 +111,19 @@ export class ConfirmationCampaignsController {
 @Controller('contact-registry')
 export class ContactRegistryController {
   constructor(private readonly admin: ConfirmationAdminService) {}
+
+  @Post('patient-search')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary:
+      'Pesquisar pacientes da agenda pelo nome, sem telefone completo e sem vínculo automático',
+  })
+  searchPatients(
+    @CurrentUser() user: AuthPrincipal,
+    @Body() dto: SearchPatientsDto,
+  ) {
+    return this.admin.searchPatients(user, dto.name);
+  }
 
   @Post('verifications')
   @ApiOperation({

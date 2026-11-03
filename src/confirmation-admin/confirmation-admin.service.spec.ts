@@ -24,7 +24,10 @@ import {
   AppointmentSourceRegistry,
   HigiaAppointmentSource,
   SaudeVianetAppointmentSource,
+  mapCampaignIdentity,
+  mapPatientSearch,
   type CampaignContactClassifier,
+  type CampaignIdentityClient,
 } from './appointment-source';
 import { ConfirmationAdminModule } from './confirmation-admin.module';
 import { ConfirmationAdminService } from './confirmation-admin.service';
@@ -488,16 +491,27 @@ function memory() {
   return { prisma, verifications, authorizations, audits, campaigns };
 }
 
+const offlineIdentity: CampaignIdentityClient = {
+  async identify() {
+    throw new Error('source_not_configured');
+  },
+  async searchPatients() {
+    throw new Error('source_not_configured');
+  },
+};
+
 function serviceFor(
   store: ReturnType<typeof memory>,
   sources?: AppointmentSource[],
   classifier?: CampaignContactClassifier,
+  identity: CampaignIdentityClient = offlineIdentity,
 ) {
   return new ConfirmationAdminService(
     store.prisma as never,
     sources ? new AppointmentSourceRegistry(sources) : undefined,
     () => NOW,
     classifier,
+    identity,
   );
 }
 
@@ -913,6 +927,153 @@ describe('ConfirmationAdminService', () => {
         .get(CampaignSourceKey.SAUDEVIANET).key,
     ).toBe(CampaignSourceKey.SAUDEVIANET);
     await moduleRef.close();
+  });
+
+  it('mostra o nome e o telefone mascarado sem alterar a classificação', async () => {
+    const store = memory();
+    const source = new SaudeVianetAppointmentSource({
+      load: async () => ({
+        appointmentDate: '2099-04-02',
+        state: 'ready',
+        reason: null,
+        items: [agendaItem(APPT_A, '09:30'), agendaItem(APPT_B, '11:00')],
+      }),
+      classify: async () => ({ items: [] }),
+    });
+    const identity: CampaignIdentityClient = {
+      async identify() {
+        return {
+          state: 'ready',
+          items: [APPT_A, APPT_B].map((appointmentRef) => ({
+            appointmentRef,
+            displayName: 'Ana Exemplo',
+            maskedPhone: '(11) 9****-0001',
+            phoneStatus: 'available',
+            professionalName: 'Dra. Exemplo',
+          })),
+        };
+      },
+      async searchPatients() {
+        throw new Error('não deve pesquisar ao abrir a campanha');
+      },
+    };
+    const service = serviceFor(store, [source], undefined, identity);
+    const created = await service.createCampaign(admin, {
+      campaignDate: '2099-04-02',
+      source: CampaignSourceKey.SAUDEVIANET,
+    });
+    const detail = await service.getCampaign(created.id);
+
+    expect(detail.items.map((item) => item.displayName)).toEqual([
+      'Ana Exemplo',
+      'Ana Exemplo',
+    ]);
+    expect(detail.items.map((item) => item.maskedPhone)).toEqual([
+      '(11) 9****-0001',
+      '(11) 9****-0001',
+    ]);
+    expect(detail.items.map((item) => item.recipientState)).toEqual([
+      CampaignRecipientState.PENDING,
+      CampaignRecipientState.PENDING,
+    ]);
+    expect(detail.dispatchEnabled).toBe(false);
+    expect(JSON.stringify(detail)).not.toMatch(/\+55/);
+  });
+
+  it('recusa telefone completo e não promove o destinatário', () => {
+    expect(
+      mapCampaignIdentity({
+        state: 'ready',
+        items: [
+          {
+            appointmentRef: APPT_A,
+            displayName: 'Ana Exemplo',
+            maskedPhone: '+5511900000001',
+            phoneStatus: 'available',
+          },
+        ],
+      }),
+    ).toBeNull();
+    expect(
+      mapPatientSearch({
+        state: 'ready',
+        truncated: false,
+        people: [
+          {
+            displayName: 'Ana Exemplo',
+            maskedPhone: '(11) 9****-0001',
+            phoneStatus: 'available',
+            patientRef: PATIENT,
+            recipientRef: RECIPIENT,
+            phoneRef: '+5511900000001',
+          },
+        ],
+      }),
+    ).toBeNull();
+  });
+
+  it('lista homônimos sem escolher um e sem aceitar token de leitura', async () => {
+    const store = memory();
+    const source = new SaudeVianetAppointmentSource({
+      load: async () => ({
+        appointmentDate: '2099-04-02',
+        state: 'empty',
+        reason: null,
+        items: [],
+      }),
+      classify: async () => ({ items: [] }),
+    });
+    const calls: string[] = [];
+    const otherPatient = `patient:v1:clinic:${'ef'.repeat(32)}`;
+    const otherRecipient = `recipient:v1:clinic:${'ef'.repeat(32)}`;
+    const identity: CampaignIdentityClient = {
+      async identify() {
+        return { state: 'empty', items: [] };
+      },
+      async searchPatients(name) {
+        calls.push(name);
+        return {
+          state: 'ready',
+          truncated: false,
+          people: [
+            {
+              displayName: 'Ana Exemplo',
+              maskedPhone: '(11) 9****-0001',
+              phoneStatus: 'available',
+              patientRef: PATIENT,
+              recipientRef: RECIPIENT,
+              phoneRef: PHONE_A,
+            },
+            {
+              displayName: 'Ana Exemplo',
+              maskedPhone: '(11) 9****-0003',
+              phoneStatus: 'available',
+              patientRef: otherPatient,
+              recipientRef: otherRecipient,
+              phoneRef: PHONE_B,
+            },
+          ],
+        };
+      },
+    };
+    const service = serviceFor(store, [source], undefined, identity);
+    await service.createCampaign(admin, {
+      campaignDate: '2099-04-02',
+      source: CampaignSourceKey.SAUDEVIANET,
+    });
+
+    const found = await service.searchPatients(receptionist, 'Ana');
+    expect(calls).toEqual(['Ana']);
+    expect(found.people).toHaveLength(2);
+    expect(found.people.map((person) => person.patientRef)).toEqual([
+      PATIENT,
+      otherPatient,
+    ]);
+    expect(found.dispatchEnabled).toBe(false);
+    await expect(service.searchPatients(serviceToken, 'Ana')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(calls).toEqual(['Ana']);
   });
 });
 
