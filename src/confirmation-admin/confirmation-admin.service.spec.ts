@@ -758,6 +758,23 @@ describe('ConfirmationAdminService', () => {
     expect(created.dispatchEnabled).toBe(false);
     expect(JSON.stringify(created)).not.toMatch(/\+55|cpf|telefone/i);
 
+    const withSeconds = serviceFor(memory(), [
+      new SaudeVianetAppointmentSource({
+        load: async () => ({
+          appointmentDate: '2099-04-03',
+          state: 'ready',
+          reason: null,
+          items: [agendaItem(APPT_A, '09:30:00')],
+        }),
+        classify: async () => ({ items: [] }),
+      }),
+    ]);
+    const stored = await withSeconds.createCampaign(admin, {
+      campaignDate: '2099-04-03',
+      source: CampaignSourceKey.SAUDEVIANET,
+    });
+    expect(stored.items.map((entry) => entry.appointmentTime)).toEqual(['09:30']);
+
     const informed = await inform(service);
     await service.verifyContact(admin, informed.id, {
       procedure: ContactVerificationProcedure.DOCUMENT_PRESENTED,
@@ -893,6 +910,7 @@ describe('ConfirmationAdminService', () => {
       /chatwoot|confirmations:dispatch|graph\.facebook|sendMessage|whatsapp\.com/i,
     );
     expect(source).toContain('dispatchEnabled: false');
+    expect(source).toContain('SOURCE_READ_TIMEOUT_MS = 90_000');
   });
 
   it('impede repetir a verificação no mesmo registro para outro número', async () => {

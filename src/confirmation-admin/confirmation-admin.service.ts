@@ -914,6 +914,17 @@ export class ConfirmationAdminService {
     return CampaignRecipientState.PENDING;
   }
 
+  private normalizeAppointmentTime(value: string | null | undefined): string | null {
+    if (value == null || value === '') {
+      return null;
+    }
+    const matched = /^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/.exec(value);
+    if (!matched) {
+      throw new BadRequestException('Horário do agendamento inválido.');
+    }
+    return `${matched[1]}:${matched[2]}`;
+  }
+
   private normalizeItems(items: readonly ItemDraft[]) {
     const seen = new Set<string>();
     return items.map((item) => {
@@ -922,13 +933,7 @@ export class ConfirmationAdminService {
         throw new BadRequestException('Há agendamento repetido na campanha.');
       }
       seen.add(appointmentRef);
-      const appointmentTime = item.appointmentTime ?? null;
-      if (
-        appointmentTime &&
-        !/^([01]\d|2[0-3]):[0-5]\d$/.test(appointmentTime)
-      ) {
-        throw new BadRequestException('Horário do agendamento inválido.');
-      }
+      const appointmentTime = this.normalizeAppointmentTime(item.appointmentTime);
       return {
         appointmentRef,
         patientRef: item.patientRef ? assertPatientRef(item.patientRef) : null,

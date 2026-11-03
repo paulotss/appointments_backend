@@ -147,6 +147,11 @@ const RECIPIENT_REF = /^recipient:v1:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{64}$/;
 const PHONE_REF = /^phone:v1:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{64}$/;
 const APPOINTMENT_REF =
   /^(?:appt|fail):v1:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{64}$/;
+// A leitura serial de todas as agendas de um dia real passou de 30s.
+// Dez segundos encerravam a consulta antes da resposta e a tela
+// tratava o dia como falha.
+const SOURCE_READ_TIMEOUT_MS = 90_000;
+
 const OPAQUE_REF =
   /^(?:patient|recipient|phone|appt|fail):v1:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{64}$/;
 const IDENTITY_KEYS = new Set([
@@ -186,7 +191,7 @@ export function httpCampaignSourceClient(
             Accept: 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(SOURCE_READ_TIMEOUT_MS),
         },
       );
       if (!response.ok) {
@@ -217,7 +222,7 @@ export function httpCampaignSourceClient(
               resolution: item.resolution,
             })),
           }),
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(SOURCE_READ_TIMEOUT_MS),
         },
       );
       if (!response.ok) {
@@ -247,7 +252,7 @@ export function httpCampaignIdentityClient(
             Accept: 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(SOURCE_READ_TIMEOUT_MS),
         },
       );
       if (!response.ok) {
@@ -269,7 +274,7 @@ export function httpCampaignIdentityClient(
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ name, dates }),
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(SOURCE_READ_TIMEOUT_MS),
         },
       );
       if (!response.ok) {
