@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   ValidationPipe,
 } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
 import {
   CampaignAdminStatus,
   CampaignRecipientState,
@@ -22,7 +23,9 @@ import {
   AppointmentSource,
   AppointmentSourceRegistry,
 } from './appointment-source';
+import { ConfirmationAdminModule } from './confirmation-admin.module';
 import { ConfirmationAdminService } from './confirmation-admin.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { InformVerificationDto } from './dto/confirmation-admin.dto';
 
 const PATIENT = `patient:v1:clinic:${'ab'.repeat(32)}`;
@@ -711,6 +714,25 @@ describe('ConfirmationAdminService', () => {
         legalGuardianVerified: false,
       }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('sobe o módulo com a origem dos agendamentos registrada', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [ConfirmationAdminModule],
+    })
+      .overrideProvider(PrismaService)
+      .useValue({})
+      .compile();
+
+    expect(moduleRef.get(ConfirmationAdminService)).toBeInstanceOf(
+      ConfirmationAdminService,
+    );
+    expect(
+      moduleRef
+        .get(AppointmentSourceRegistry)
+        .get(CampaignSourceKey.SAUDEVIANET).key,
+    ).toBe(CampaignSourceKey.SAUDEVIANET);
+    await moduleRef.close();
   });
 });
 

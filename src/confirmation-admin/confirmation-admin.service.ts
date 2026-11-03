@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import {
   CampaignAdminStatus,
@@ -86,7 +87,9 @@ type StaffActor = { id: number; role: UserRole; name: string };
 export class ConfirmationAdminService {
   constructor(
     private readonly prisma: PrismaService,
+    @Optional()
     private readonly sources: AppointmentSourceRegistry = defaultAppointmentSources(),
+    @Optional()
     private readonly clock: () => Date = () => new Date(),
   ) {}
 
