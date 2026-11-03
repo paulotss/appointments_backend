@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import {
   CampaignAdminStatus,
+  CampaignConsultationState,
   CampaignRecipientState,
   CampaignSourceKey,
   ConfirmationAuditAction,
@@ -24,12 +25,13 @@ import {
 } from '../auth/interfaces/jwt-payload.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  AppointmentSourceLoad,
   AppointmentSourceRegistry,
+  CampaignContactClassifier,
   defaultAppointmentSources,
 } from './appointment-source';
 import {
   AssociateSubjectDto,
-  CampaignItemDto,
   CreateCampaignDto,
   InformVerificationDto,
   RecordAuthorizationDto,
@@ -83,6 +85,20 @@ const campaignInclude = {
 
 type StaffActor = { id: number; role: UserRole; name: string };
 
+type ItemDraft = {
+  appointmentRef: string;
+  patientRef?: string | null;
+  recipientRef?: string | null;
+  informedPhoneRef?: string | null;
+  recipientState: CampaignRecipientState;
+  reasonCode?: string | null;
+  professionalRef?: string | null;
+  appointmentTime?: string | null;
+  agendaRef?: string | null;
+  sourceResolution?: string | null;
+  isMinor?: boolean | null;
+};
+
 @Injectable()
 export class ConfirmationAdminService {
   constructor(
@@ -91,6 +107,8 @@ export class ConfirmationAdminService {
     private readonly sources: AppointmentSourceRegistry = defaultAppointmentSources(),
     @Optional()
     private readonly clock: () => Date = () => new Date(),
+    @Optional()
+    private readonly classifier?: CampaignContactClassifier,
   ) {}
 
   async informVerification(
@@ -189,6 +207,7 @@ export class ConfirmationAdminService {
       verified.id,
       verified.patientRef,
     );
+    await this.reclassifyPatient(actor, verified.patientRef);
     return this.presentVerification(verified);
   }
 
@@ -210,6 +229,7 @@ export class ConfirmationAdminService {
       revoked.id,
       revoked.patientRef,
     );
+    await this.reclassifyPatient(actor, revoked.patientRef);
     return this.presentVerification(revoked);
   }
 
@@ -271,6 +291,7 @@ export class ConfirmationAdminService {
       created.id,
       patientRef,
     );
+    await this.reclassifyPatient(actor, patientRef);
     return this.presentAuthorization(created);
   }
 
@@ -292,6 +313,7 @@ export class ConfirmationAdminService {
       revoked.id,
       revoked.patientRef,
     );
+    await this.reclassifyPatient(actor, revoked.patientRef);
     return this.presentAuthorization(revoked);
   }
 
@@ -428,6 +450,7 @@ export class ConfirmationAdminService {
     const campaignDate = assertCampaignDate(dto.campaignDate);
     const source = this.sources.get(dto.source);
     const loaded = await source.load(campaignDate);
+    const consultation = this.consultationOf(loaded);
     const drafts = loaded.connected ? loaded.items : (dto.items ?? []);
     const items = this.normalizeItems(drafts);
     const existing = await this.prisma.confirmationCampaign.findFirst({
@@ -447,6 +470,8 @@ export class ConfirmationAdminService {
         campaignDate: campaignDateValue(campaignDate),
         source: dto.source,
         status: CampaignAdminStatus.DRAFT,
+        consultationState: consultation.consultationState,
+        consultationReason: consultation.consultationReason,
         ...this.counts(items),
         createdByUserId: actor.id,
         items: { create: items },
@@ -706,7 +731,130 @@ export class ConfirmationAdminService {
     }
   }
 
-  private normalizeItems(items: readonly CampaignItemDto[]) {
+  private consultationOf(loaded: AppointmentSourceLoad): {
+    consultationState: CampaignConsultationState;
+    consultationReason: string | null;
+  } {
+    if (!loaded.connected) {
+      return {
+        consultationState: CampaignConsultationState.NOT_CONNECTED,
+        consultationReason: null,
+      };
+    }
+    const consultationState = {
+      ready: CampaignConsultationState.READY,
+      empty: CampaignConsultationState.EMPTY,
+      partial: CampaignConsultationState.PARTIAL,
+      failed: CampaignConsultationState.FAILED,
+    }[loaded.availability];
+    const reason = loaded.reason;
+    return {
+      consultationState,
+      consultationReason:
+        reason && /^[a-z0-9][a-z0-9_.:-]{0,63}$/.test(reason) ? reason : null,
+    };
+  }
+
+  private async reclassifyPatient(actor: StaffActor, patientRef: string) {
+    const rows = await this.prisma.confirmationCampaign.findMany({
+      include: campaignInclude,
+    });
+    for (const campaign of rows) {
+      const targets = campaign.items.filter(
+        (item) => item.patientRef === patientRef && item.sourceResolution,
+      );
+      if (targets.length === 0) {
+        continue;
+      }
+      let classified: Awaited<
+        ReturnType<CampaignContactClassifier['classify']>
+      > | null = null;
+      if (this.classifier) {
+        try {
+          classified = await this.classifier.classify(
+            targets.map((item) => ({
+              appointmentRef: item.appointmentRef,
+              patientRef: item.patientRef,
+              recipientRef: item.recipientRef,
+              phoneRef: item.informedPhoneRef,
+              isMinor: item.isMinor,
+              resolution: item.sourceResolution,
+            })),
+          );
+        } catch {
+          classified = null;
+        }
+      }
+      let changed = false;
+      for (const item of targets) {
+        const next = classified?.find(
+          (entry) => entry.appointmentRef === item.appointmentRef,
+        );
+        const recipientState = next
+          ? this.recipientStateOf(next.contactState, next.reasonCode)
+          : item.recipientState === CampaignRecipientState.ELIGIBLE
+            ? CampaignRecipientState.UNAVAILABLE
+            : item.recipientState;
+        const reasonCode = next
+          ? assertOptionalOpaque(next.reasonCode, 'Pendência')
+          : item.recipientState === CampaignRecipientState.ELIGIBLE
+            ? 'reclassification_unavailable'
+            : item.reasonCode;
+        if (
+          recipientState === item.recipientState &&
+          reasonCode === item.reasonCode
+        ) {
+          continue;
+        }
+        changed = true;
+        await this.prisma.confirmationCampaignItem.update({
+          where: { id: item.id },
+          data: { recipientState, reasonCode },
+        });
+        await this.audit(
+          actor,
+          ConfirmationAuditAction.ITEM_RECLASSIFIED,
+          'campaign_item',
+          String(item.id),
+          patientRef,
+        );
+      }
+      if (!changed) {
+        continue;
+      }
+      const fresh = await this.findCampaign(campaign.id);
+      await this.prisma.confirmationCampaign.update({
+        where: { id: campaign.id },
+        data: {
+          ...this.counts(fresh.items),
+          events: {
+            create: {
+              action: ConfirmationAuditAction.ITEM_RECLASSIFIED,
+              actorUserId: actor.id,
+              fromStatus: campaign.status,
+              toStatus: campaign.status,
+              createdAt: this.clock(),
+            },
+          },
+        },
+      });
+    }
+  }
+
+  private recipientStateOf(
+    contactState: 'eligible' | 'pending' | 'unavailable',
+    reasonCode: string,
+  ): CampaignRecipientState {
+    if (contactState === 'eligible' && reasonCode === 'contact_ready') {
+      return CampaignRecipientState.ELIGIBLE;
+    }
+    if (contactState === 'unavailable') {
+      return CampaignRecipientState.UNAVAILABLE;
+    }
+    return CampaignRecipientState.PENDING;
+  }
+
+  private normalizeItems(items: readonly ItemDraft[]) {
     const seen = new Set<string>();
     return items.map((item) => {
       const appointmentRef = assertAppointmentRef(item.appointmentRef);
@@ -714,6 +862,13 @@ export class ConfirmationAdminService {
         throw new BadRequestException('Há agendamento repetido na campanha.');
       }
       seen.add(appointmentRef);
+      const appointmentTime = item.appointmentTime ?? null;
+      if (
+        appointmentTime &&
+        !/^([01]\d|2[0-3]):[0-5]\d$/.test(appointmentTime)
+      ) {
+        throw new BadRequestException('Horário do agendamento inválido.');
+      }
       return {
         appointmentRef,
         patientRef: item.patientRef ? assertPatientRef(item.patientRef) : null,
@@ -721,6 +876,18 @@ export class ConfirmationAdminService {
           ? assertRecipientRef(item.recipientRef)
           : null,
         informedPhoneRef: assertOptionalPhoneRef(item.informedPhoneRef),
+        professionalRef: assertOptionalOpaque(
+          item.professionalRef,
+          'Profissional',
+        ),
+        appointmentTime,
+        agendaRef: assertOptionalOpaque(item.agendaRef, 'Agenda'),
+        sourceResolution: assertOptionalOpaque(
+          item.sourceResolution,
+          'Situação da agenda',
+        ),
+        isMinor:
+          item.isMinor === true ? true : item.isMinor === false ? false : null,
         recipientState: item.recipientState,
         reasonCode: assertOptionalOpaque(item.reasonCode, 'Pendência'),
       };
@@ -858,6 +1025,8 @@ export class ConfirmationAdminService {
     eligibleRecipients: number;
     pendingVerifications: number;
     unavailableRecipients: number;
+    consultationState: CampaignConsultationState;
+    consultationReason: string | null;
     approvedAt: Date | null;
     createdAt: Date;
     createdBy: { id: number; name: string };
@@ -873,6 +1042,8 @@ export class ConfirmationAdminService {
       eligibleRecipients: row.eligibleRecipients,
       pendingVerifications: row.pendingVerifications,
       unavailableRecipients: row.unavailableRecipients,
+      consultationState: row.consultationState,
+      consultationReason: row.consultationReason,
       approvedAt: row.approvedAt ? formatInstant(row.approvedAt) : null,
       createdAt: formatInstant(row.createdAt),
       createdBy: row.createdBy,
@@ -894,6 +1065,11 @@ export class ConfirmationAdminService {
         patientRef: item.patientRef,
         recipientRef: item.recipientRef,
         informedPhoneRef: item.informedPhoneRef,
+        professionalRef: item.professionalRef,
+        appointmentTime: item.appointmentTime,
+        agendaRef: item.agendaRef,
+        sourceResolution: item.sourceResolution,
+        isMinor: item.isMinor,
         recipientState: item.recipientState,
         reasonCode: item.reasonCode,
       })),

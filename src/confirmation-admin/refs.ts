@@ -6,6 +6,8 @@ const RECIPIENT_REF = /^recipient:v1:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{64}$/;
 const PHONE_REF = /^phone:v1:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{64}$/;
 const OPAQUE = /^[a-z0-9][a-z0-9_.:-]{0,63}$/;
 const APPOINTMENT_REF = /^[a-z][a-z0-9_.:-]{0,80}$/;
+const OPAQUE_APPOINTMENT_REF =
+  /^(?:appt|fail):v1:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{64}$/;
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const LONG_DIGIT_RUN = /\d{8,}/;
@@ -66,6 +68,9 @@ export function assertOptionalOpaque(
 }
 
 export function assertAppointmentRef(value: string): string {
+  if (OPAQUE_APPOINTMENT_REF.test(value)) {
+    return value;
+  }
   const ref = assertMatch(
     value,
     APPOINTMENT_REF,

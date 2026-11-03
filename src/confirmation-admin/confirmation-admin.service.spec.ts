@@ -22,12 +22,17 @@ import { join } from 'node:path';
 import {
   AppointmentSource,
   AppointmentSourceRegistry,
+  HigiaAppointmentSource,
+  SaudeVianetAppointmentSource,
+  type CampaignContactClassifier,
 } from './appointment-source';
 import { ConfirmationAdminModule } from './confirmation-admin.module';
 import { ConfirmationAdminService } from './confirmation-admin.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { InformVerificationDto } from './dto/confirmation-admin.dto';
 
+const APPT_A = `appt:v1:clinic:${'ab'.repeat(32)}`;
+const APPT_B = `appt:v1:clinic:${'cd'.repeat(32)}`;
 const PATIENT = `patient:v1:clinic:${'ab'.repeat(32)}`;
 const RECIPIENT = `recipient:v1:clinic:${'cd'.repeat(32)}`;
 const PHONE_A = `phone:v1:clinic:${'11'.repeat(32)}`;
@@ -403,6 +408,8 @@ function memory() {
           eligibleRecipients: data.eligibleRecipients,
           pendingVerifications: data.pendingVerifications,
           unavailableRecipients: data.unavailableRecipients,
+          consultationState: data.consultationState ?? 'NOT_CONNECTED',
+          consultationReason: data.consultationReason ?? null,
           createdByUserId: data.createdByUserId,
           items: nestedItems,
           events,
@@ -455,6 +462,24 @@ function memory() {
         if (row) row.items = [];
         return { count };
       },
+      update: async ({
+        where,
+        data,
+      }: {
+        where: { id: number };
+        data: Record<string, unknown>;
+      }) => {
+        for (const campaign of campaigns) {
+          const item = (campaign.items as Array<Record<string, unknown>>).find(
+            (entry) => entry.id === where.id,
+          );
+          if (item) {
+            Object.assign(item, data);
+            return item;
+          }
+        }
+        throw new Error('missing item');
+      },
     },
     $transaction: async (callback: (tx: unknown) => Promise<unknown>) =>
       callback(prisma),
@@ -466,11 +491,13 @@ function memory() {
 function serviceFor(
   store: ReturnType<typeof memory>,
   sources?: AppointmentSource[],
+  classifier?: CampaignContactClassifier,
 ) {
   return new ConfirmationAdminService(
     store.prisma as never,
     sources ? new AppointmentSourceRegistry(sources) : undefined,
     () => NOW,
+    classifier,
   );
 }
 
@@ -611,10 +638,10 @@ describe('ConfirmationAdminService', () => {
 
   it('aprovação administrativa não promove destinatário nem cria autorização', async () => {
     const store = memory();
-    const service = serviceFor(store);
+    const service = serviceFor(store, [new HigiaAppointmentSource()]);
     const created = await service.createCampaign(receptionist, {
       campaignDate: '2026-11-04',
-      source: CampaignSourceKey.SAUDEVIANET,
+      source: CampaignSourceKey.HIGIA,
       items: [
         item('appointment:pending', CampaignRecipientState.PENDING),
         item('appointment:unavailable', CampaignRecipientState.UNAVAILABLE),
@@ -646,6 +673,8 @@ describe('ConfirmationAdminService', () => {
       label: 'Higia futuro',
       load: async () => ({
         connected: true,
+        availability: 'ready',
+        reason: null,
         items: [
           item('appointment:from-source', CampaignRecipientState.ELIGIBLE),
         ],
@@ -662,6 +691,157 @@ describe('ConfirmationAdminService', () => {
       'appointment:from-source',
     ]);
     expect(created.dispatchEnabled).toBe(false);
+  });
+
+  it('carrega a agenda do Saúde Vianet sem promover agendamento marcado', async () => {
+    const store = memory();
+    let consultations = 0;
+    const source = new SaudeVianetAppointmentSource({
+      load: async () => {
+        consultations += 1;
+        return {
+          appointmentDate: '2099-04-02',
+          state: 'ready',
+          reason: null,
+          items: [agendaItem(APPT_A, '09:30'), agendaItem(APPT_B, '11:00')],
+        };
+      },
+      classify: async () => ({ items: [] }),
+    });
+    const classifier: CampaignContactClassifier = {
+      classify: async () => [
+        {
+          appointmentRef: APPT_A,
+          contactState: 'eligible',
+          reasonCode: 'contact_ready',
+        },
+        {
+          appointmentRef: APPT_B,
+          contactState: 'eligible',
+          reasonCode: 'contact_ready',
+        },
+      ],
+    };
+    const service = serviceFor(store, [source], classifier);
+    const created = await service.createCampaign(admin, {
+      campaignDate: '2099-04-02',
+      source: CampaignSourceKey.SAUDEVIANET,
+      items: [item('appointment:typed', CampaignRecipientState.ELIGIBLE)],
+    });
+
+    expect(consultations).toBe(1);
+    expect(created.consultationState).toBe('READY');
+    expect(created.eligibleRecipients).toBe(0);
+    expect(created.pendingVerifications).toBe(2);
+    expect(created.items.map((entry) => entry.recipientRef)).toEqual([
+      RECIPIENT,
+      RECIPIENT,
+    ]);
+    expect(created.items.map((entry) => entry.appointmentTime)).toEqual([
+      '09:30',
+      '11:00',
+    ]);
+    expect(created.dispatchEnabled).toBe(false);
+    expect(JSON.stringify(created)).not.toMatch(/\+55|cpf|telefone/i);
+
+    const informed = await inform(service);
+    await service.verifyContact(admin, informed.id, {
+      procedure: ContactVerificationProcedure.DOCUMENT_PRESENTED,
+      legalGuardianVerified: false,
+    });
+    const refreshed = await service.getCampaign(created.id);
+    expect(refreshed.items.map((entry) => entry.recipientState)).toEqual([
+      CampaignRecipientState.ELIGIBLE,
+      CampaignRecipientState.ELIGIBLE,
+    ]);
+
+    classifier.classify = async () => [
+      {
+        appointmentRef: APPT_A,
+        contactState: 'pending',
+        reasonCode: 'ownership_revoked',
+      },
+      {
+        appointmentRef: APPT_B,
+        contactState: 'pending',
+        reasonCode: 'ownership_revoked',
+      },
+    ];
+    const verified = store.verifications.find(
+      (row) => row.status === ContactVerificationStatus.VERIFIED,
+    );
+    await service.revokeVerification(admin, String(verified?.id));
+    const revoked = await service.getCampaign(created.id);
+    expect(revoked.eligibleRecipients).toBe(0);
+    expect(revoked.items.map((entry) => entry.reasonCode)).toEqual([
+      'ownership_revoked',
+      'ownership_revoked',
+    ]);
+    expect(revoked.events.map((event) => event.action)).toContain(
+      'ITEM_RECLASSIFIED',
+    );
+    expect(store.authorizations).toHaveLength(0);
+  });
+
+  it('distingue agenda vazia de falha e rejeita telefone na consulta', async () => {
+    const empty = new SaudeVianetAppointmentSource({
+      load: async () => ({
+        appointmentDate: '2099-04-03',
+        state: 'empty',
+        reason: null,
+        items: [],
+      }),
+      classify: async () => ({ items: [] }),
+    });
+    const failed = new SaudeVianetAppointmentSource({
+      load: async () => ({
+        appointmentDate: '2099-04-04',
+        state: 'failed',
+        reason: 'query_failed',
+        items: [],
+      }),
+      classify: async () => ({ items: [] }),
+    });
+    const leaked = new SaudeVianetAppointmentSource({
+      load: async () => ({
+        appointmentDate: '2099-04-05',
+        state: 'ready',
+        reason: null,
+        phone: '+5511900000001',
+        items: [agendaItem(APPT_A, '09:30')],
+      }),
+      classify: async () => ({ items: [] }),
+    });
+    const emptyCampaign = await serviceFor(memory(), [empty]).createCampaign(
+      admin,
+      {
+        campaignDate: '2099-04-03',
+        source: CampaignSourceKey.SAUDEVIANET,
+      },
+    );
+    const failedCampaign = await serviceFor(memory(), [failed]).createCampaign(
+      admin,
+      {
+        campaignDate: '2099-04-04',
+        source: CampaignSourceKey.SAUDEVIANET,
+      },
+    );
+    const leakedCampaign = await serviceFor(memory(), [leaked]).createCampaign(
+      admin,
+      {
+        campaignDate: '2099-04-05',
+        source: CampaignSourceKey.SAUDEVIANET,
+      },
+    );
+
+    expect(emptyCampaign.consultationState).toBe('EMPTY');
+    expect(emptyCampaign.items).toHaveLength(0);
+    expect(failedCampaign.consultationState).toBe('FAILED');
+    expect(failedCampaign.consultationReason).toBe('query_failed');
+    expect(failedCampaign.eligibleRecipients).toBe(0);
+    expect(leakedCampaign.consultationState).toBe('FAILED');
+    expect(leakedCampaign.items).toHaveLength(0);
+    expect(leakedCampaign.eligibleRecipients).toBe(0);
   });
 
   it('rejeita telefone no corpo da verificação', async () => {
@@ -735,6 +915,22 @@ describe('ConfirmationAdminService', () => {
     await moduleRef.close();
   });
 });
+
+function agendaItem(appointmentRef: string, appointmentTime: string) {
+  return {
+    appointmentRef,
+    professionalRef: 'prof.ana',
+    appointmentTime,
+    agendaRef: 'agenda.exemplo',
+    patientRef: PATIENT,
+    recipientRef: RECIPIENT,
+    phoneRef: PHONE_A,
+    isMinor: false,
+    resolution: 'candidate',
+    contactState: 'pending',
+    reasonCode: 'verification_missing',
+  };
+}
 
 function item(appointmentRef: string, recipientState: CampaignRecipientState) {
   return {
