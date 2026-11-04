@@ -460,7 +460,9 @@ export class ConfirmationAdminService {
     const source = this.sources.get(dto.source);
     const loaded = await source.load(campaignDate);
     const consultation = this.consultationOf(loaded);
-    const drafts = loaded.connected ? loaded.items : (dto.items ?? []);
+    const drafts = loaded.connected
+      ? [...loaded.items, ...(loaded.failures ?? [])]
+      : (dto.items ?? []);
     const items = this.normalizeItems(drafts);
     const existing = await this.prisma.confirmationCampaign.findFirst({
       where: {
@@ -954,16 +956,24 @@ export class ConfirmationAdminService {
     });
   }
 
-  private counts(items: readonly { recipientState: CampaignRecipientState }[]) {
+  private counts(
+    items: readonly {
+      appointmentRef?: string;
+      recipientState: CampaignRecipientState;
+    }[],
+  ) {
+    const appointments = items.filter(
+      (item) => !item.appointmentRef?.startsWith('fail:'),
+    );
     return {
-      appointmentsAnalyzed: items.length,
-      eligibleRecipients: items.filter(
+      appointmentsAnalyzed: appointments.length,
+      eligibleRecipients: appointments.filter(
         (item) => item.recipientState === CampaignRecipientState.ELIGIBLE,
       ).length,
-      pendingVerifications: items.filter(
+      pendingVerifications: appointments.filter(
         (item) => item.recipientState === CampaignRecipientState.PENDING,
       ).length,
-      unavailableRecipients: items.filter(
+      unavailableRecipients: appointments.filter(
         (item) => item.recipientState === CampaignRecipientState.UNAVAILABLE,
       ).length,
     };
@@ -1091,6 +1101,7 @@ export class ConfirmationAdminService {
     createdAt: Date;
     createdBy: { id: number; name: string };
     approvedBy: { id: number; name: string } | null;
+    items?: { appointmentRef: string }[];
   }) {
     return {
       id: row.id,
@@ -1109,6 +1120,9 @@ export class ConfirmationAdminService {
       createdBy: row.createdBy,
       approvedBy: row.approvedBy,
       dispatchEnabled: false,
+      technicalFailures: row.items?.filter((item) =>
+        item.appointmentRef.startsWith('fail:'),
+      ).length ?? 0,
     };
   }
 
