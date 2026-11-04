@@ -6,6 +6,11 @@ import {
   ContactRegistryController,
 } from './confirmation-admin.controller';
 import { ConfirmationAdminService } from './confirmation-admin.service';
+import { ConfirmationSimulationService } from './confirmation-simulation.service';
+import {
+  ConfirmationSimulationController,
+  ConfirmationSimulationHistoryController,
+} from './confirmation-simulation.controller';
 import {
   AppointmentSourceRegistry,
   CAMPAIGN_IDENTITY,
@@ -22,9 +27,12 @@ import {
     ConfirmationCampaignsController,
     ContactRegistryController,
     ClinicRegistryReadController,
+    ConfirmationSimulationController,
+    ConfirmationSimulationHistoryController,
   ],
   providers: [
     ConfirmationAdminService,
+    ConfirmationSimulationService,
     {
       provide: AppointmentSourceRegistry,
       useFactory: () => defaultAppointmentSources(httpCampaignSourceClient()),
