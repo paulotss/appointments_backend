@@ -177,6 +177,13 @@ export function httpCampaignSourceClient(
 ): CampaignSourceClient {
   const base = env.SAUDEVIANET_INTERNAL_API_BASE?.replace(/\/$/, '');
   const token = env.SAUDEVIANET_INTERNAL_API_TOKEN;
+  const configuredTimeout = env.SAUDEVIANET_CAMPAIGN_SOURCE_TIMEOUT_MS;
+  const collectionTimeout = configuredTimeout === undefined
+    ? 60000
+    : Number(configuredTimeout);
+  if (!Number.isInteger(collectionTimeout) || collectionTimeout < 1000 || collectionTimeout > 300000) {
+    throw new Error('invalid_campaign_source_timeout');
+  }
   return {
     async load(campaignDate: string) {
       if (!base || !token) {
@@ -190,7 +197,7 @@ export function httpCampaignSourceClient(
             Accept: 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(collectionTimeout),
         },
       );
       if (!response.ok) {
