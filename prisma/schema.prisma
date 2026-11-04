@@ -40,6 +40,7 @@ enum ServiceTokenScope {
   AGENT_DATA_READ
   AGENT_DATA_WRITE
   CLINIC_REGISTRY_READ
+  CONFIRMATION_SIMULATE
 
   @@map("service_token_scope")
 }
@@ -806,6 +807,7 @@ model ServiceAccessToken {
   createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamp(3)
   createdById Int                 @map("created_by_id")
   createdBy   User                @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  confirmationSimulations ConfirmationSimulation[]
 
   @@index([createdById])
   @@map("service_access_tokens")
@@ -1319,11 +1321,30 @@ model ConfirmationCampaign {
   approvedBy             User?                @relation("CampaignApprovedBy", fields: [approvedByUserId], references: [id], onDelete: Restrict)
   items                  ConfirmationCampaignItem[]
   events                 ConfirmationCampaignEvent[]
+  simulations            ConfirmationSimulation[]
 
   @@unique([campaignDate, source])
   @@index([status])
   @@index([createdByUserId])
   @@map("confirmation_campaigns")
+}
+
+model ConfirmationSimulation {
+  id             String @id @default(uuid()) @db.Uuid
+  campaignId     Int @map("campaign_id")
+  revision       String @db.Char(64)
+  status         String @default("RUNNING") @db.VarChar(16)
+  claimHash      String @map("claim_hash") @db.Char(64)
+  leaseUntil     DateTime @map("lease_until") @db.Timestamp(3)
+  serviceTokenId Int @map("service_token_id")
+  report         Json? @db.JsonB
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamp(3)
+  completedAt    DateTime? @map("completed_at") @db.Timestamp(3)
+  campaign       ConfirmationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  serviceToken   ServiceAccessToken @relation(fields: [serviceTokenId], references: [id], onDelete: Restrict)
+
+  @@unique([campaignId, revision])
+  @@map("confirmation_simulations")
 }
 
 model ConfirmationCampaignItem {
