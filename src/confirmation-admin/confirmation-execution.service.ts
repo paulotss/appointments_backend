@@ -50,7 +50,8 @@ export class ConfirmationExecutionService {
     if (
       row.status !== 'APPROVED' ||
       !row.approvedAt ||
-      row.consultationState !== 'READY'
+      row.consultationState !== 'READY' ||
+      !row.responseDeadlineAt
     )
       throw new ConflictException('approval_unavailable');
     return row;
@@ -82,6 +83,7 @@ export class ConfirmationExecutionService {
       revision,
       campaignDate: campaign.campaignDate.toISOString().slice(0, 10),
       source: campaign.source,
+      responseDeadlineAt: campaign.responseDeadlineAt!.toISOString(),
       items: campaign.items
         .filter((item) => !item.appointmentRef.startsWith('fail:'))
         .map((item) => this.item(campaign, revision, item)),
@@ -163,6 +165,7 @@ export class ConfirmationExecutionService {
       revision,
       campaignDate: campaign.campaignDate.toISOString().slice(0, 10),
       source: campaign.source,
+      responseDeadlineAt: campaign.responseDeadlineAt!.toISOString(),
       item: this.item(campaign, revision, item),
     };
   }

@@ -23,6 +23,7 @@ function fixture() {
     source: 'SAUDEVIANET',
     status: 'APPROVED',
     approvedAt: new Date('2026-11-04T12:00:00Z'),
+    responseDeadlineAt: new Date('2026-11-05T10:00:00Z'),
     approvedByUserId: 1,
     consultationState: 'READY',
     items: [

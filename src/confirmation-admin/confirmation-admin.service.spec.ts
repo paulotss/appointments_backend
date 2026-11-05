@@ -484,6 +484,8 @@ function memory() {
         throw new Error('missing item');
       },
     },
+    $queryRaw: async () => [],
+    confirmationApprovalSnapshot: { create: async () => ({}) },
     $transaction: async (callback: (tx: unknown) => Promise<unknown>) =>
       callback(prisma),
   };
@@ -650,7 +652,7 @@ describe('ConfirmationAdminService', () => {
     ).rejects.toThrow('Paciente do Higia não encontrado.');
   });
 
-  it('aprovação administrativa não promove destinatário nem cria autorização', async () => {
+  it('aprovação sem horários elegíveis não promove destinatário nem cria autorização', async () => {
     const store = memory();
     const service = serviceFor(store, [new HigiaAppointmentSource()]);
     const created = await service.createCampaign(receptionist, {
@@ -666,9 +668,10 @@ describe('ConfirmationAdminService', () => {
     expect(created.unavailableRecipients).toBe(1);
 
     const reviewed = await service.submitReview(receptionist, created.id);
-    const approved = await service.approve(admin, reviewed.id);
+    await expect(service.approve(admin, reviewed.id)).rejects.toBeInstanceOf(BadRequestException);
+    const approved = await service.getCampaign(reviewed.id);
 
-    expect(approved.status).toBe(CampaignAdminStatus.APPROVED);
+    expect(approved.status).toBe(CampaignAdminStatus.IN_REVIEW);
     expect(approved.items.map((entry) => entry.recipientState)).toEqual([
       CampaignRecipientState.PENDING,
       CampaignRecipientState.UNAVAILABLE,
@@ -677,7 +680,6 @@ describe('ConfirmationAdminService', () => {
     expect(approved.events.map((event) => event.action)).toEqual([
       'CAMPAIGN_CREATED',
       'CAMPAIGN_SUBMITTED',
-      'CAMPAIGN_APPROVED',
     ]);
   });
 
@@ -757,6 +759,23 @@ describe('ConfirmationAdminService', () => {
     ]);
     expect(created.dispatchEnabled).toBe(false);
     expect(JSON.stringify(created)).not.toMatch(/\+55|cpf|telefone/i);
+
+    const withSeconds = serviceFor(memory(), [
+      new SaudeVianetAppointmentSource({
+        load: async () => ({
+          appointmentDate: '2099-04-03',
+          state: 'ready',
+          reason: null,
+          items: [agendaItem(APPT_A, '09:30:00')],
+        }),
+        classify: async () => ({ items: [] }),
+      }),
+    ]);
+    const stored = await withSeconds.createCampaign(admin, {
+      campaignDate: '2099-04-03',
+      source: CampaignSourceKey.SAUDEVIANET,
+    });
+    expect(stored.items.map((entry) => entry.appointmentTime)).toEqual(['09:30']);
 
     const informed = await inform(service);
     await service.verifyContact(admin, informed.id, {

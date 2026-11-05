@@ -121,3 +121,13 @@ responsável legal já implementados.
   fast-forward; então criar branches novas. As branches anteriores ficam preservadas.
 - Push, PR, merge, configuração do ambiente, envio real e deploy têm autorizações
   próprias; a preparação deste documento não os executa.
+
+## Situação da entrega 4B
+
+Implementação e homologação isolada documentadas em
+[respostas-pendencias-confirmacao.md](respostas-pendencias-confirmacao.md).
+Respostas e pendências têm acompanhamento no Higia, com processamento persistente
+no webhook e prazo por campanha. A integração permanece desligada por padrão.
+A etapa seguinte deve validar a confirmação no legado em ambiente fictício e
+fechar os requisitos do piloto; qualquer atualização ou envio real exige
+validação e autorização específicas.

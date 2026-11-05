@@ -14,6 +14,7 @@ import {
   IsEnum,
   IsInt,
   IsOptional,
+  IsString,
   Matches,
   Min,
   ValidateNested,
@@ -148,4 +149,9 @@ export class ReplaceCampaignItemsDto {
   @ValidateNested({ each: true })
   @Type(() => CampaignItemDto)
   items!: CampaignItemDto[];
+}
+
+export class ResponseDeadlineDto {
+  @IsString()
+  responseDeadlineAt: string;
 }
