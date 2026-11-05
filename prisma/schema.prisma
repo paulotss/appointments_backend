@@ -41,6 +41,7 @@ enum ServiceTokenScope {
   AGENT_DATA_WRITE
   CLINIC_REGISTRY_READ
   CONFIRMATION_SIMULATE
+  CONFIRMATION_EXECUTION_READ
 
   @@map("service_token_scope")
 }

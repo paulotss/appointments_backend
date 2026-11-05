@@ -6,6 +6,10 @@ contratos atuais; não criar outra arquitetura de campanhas.
 
 ## Entrega 4A — Adaptador do canal e correlação, com testes isolados
 
+Implementação isolada registrada em [transporte-correlacao-confirmacao.md](transporte-correlacao-confirmacao.md).
+O ambiente local oferece apenas WebWidget; a homologação do provedor WhatsApp
+real permanece pendente para o piloto. O dispatch continua bloqueado.
+
 O resultado esperado é um adaptador testável do canal WhatsApp usado pela clínica,
 com identificação persistente da tentativa e da conversa, mantendo a ativação
 real bloqueada. A entrada é uma campanha aprovada; o resultado diferencia aceite
