@@ -64,6 +64,9 @@ import {
   ownershipRecordId,
 } from './refs';
 
+import { campaignRevision } from './campaign-approval';
+import { assertResponseDeadline, isUtcInstant } from './response-deadline';
+
 const STAFF_ROLES = new Set<UserRole>([UserRole.RECEPTIONIST, UserRole.ADMIN]);
 
 const actorSelect = { id: true, name: true } as const;
@@ -628,31 +631,95 @@ export class ConfirmationAdminService {
     );
   }
 
-  async approve(principal: AuthPrincipal, id: number) {
+  async setResponseDeadline(
+    principal: AuthPrincipal,
+    id: number,
+    value: string,
+  ) {
     const actor = await this.requireStaff(principal);
-    const current = await this.findCampaign(id);
-    if (current.status !== CampaignAdminStatus.IN_REVIEW) {
-      throw new BadRequestException(
-        'A aprovação administrativa sai da revisão, não do rascunho.',
-      );
-    }
-    const saved = await this.prisma.confirmationCampaign.update({
-      where: { id },
-      data: {
-        status: CampaignAdminStatus.APPROVED,
-        approvedByUserId: actor.id,
-        approvedAt: this.clock(),
-        events: {
-          create: {
-            action: ConfirmationAuditAction.CAMPAIGN_APPROVED,
-            actorUserId: actor.id,
-            fromStatus: current.status,
-            toStatus: CampaignAdminStatus.APPROVED,
-            createdAt: this.clock(),
+    if (!isUtcInstant(value))
+      throw new BadRequestException('Prazo UTC inválido.');
+    const saved = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM confirmation_campaigns WHERE id=${id} FOR UPDATE`;
+      const current = await tx.confirmationCampaign.findUniqueOrThrow({
+        where: { id },
+        include: campaignInclude,
+      });
+      this.assertEditable(current.status);
+      return tx.confirmationCampaign.update({
+        where: { id },
+        data: {
+          responseDeadlineAt: new Date(value),
+          events: {
+            create: {
+              action: ConfirmationAuditAction.CAMPAIGN_UPDATED,
+              actorUserId: actor.id,
+              fromStatus: current.status,
+              toStatus: current.status,
+              createdAt: this.clock(),
+            },
           },
         },
-      },
-      include: campaignInclude,
+        include: campaignInclude,
+      });
+    });
+    return this.presentCampaign(saved);
+  }
+
+  async approve(principal: AuthPrincipal, id: number) {
+    const actor = await this.requireStaff(principal);
+    const saved = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM confirmation_campaigns WHERE id=${id} FOR UPDATE`;
+      const current = await tx.confirmationCampaign.findUniqueOrThrow({
+        where: { id },
+        include: campaignInclude,
+      });
+      if (current.status !== CampaignAdminStatus.IN_REVIEW)
+        throw new BadRequestException(
+          'A aprovação administrativa sai da revisão, não do rascunho.',
+        );
+      assertResponseDeadline(current, this.clock());
+      const approved = await tx.confirmationCampaign.update({
+        where: { id },
+        data: {
+          status: CampaignAdminStatus.APPROVED,
+          approvedByUserId: actor.id,
+          approvedAt: this.clock(),
+          events: {
+            create: {
+              action: ConfirmationAuditAction.CAMPAIGN_APPROVED,
+              actorUserId: actor.id,
+              fromStatus: current.status,
+              toStatus: CampaignAdminStatus.APPROVED,
+              createdAt: this.clock(),
+            },
+          },
+        },
+        include: campaignInclude,
+      });
+      await tx.confirmationApprovalSnapshot.create({
+        data: {
+          revision: campaignRevision(approved),
+          campaignId: id,
+          snapshot: JSON.parse(
+            JSON.stringify({
+              date: approved.campaignDate.toISOString().slice(0, 10),
+              responseDeadlineAt: approved.responseDeadlineAt,
+              items: approved.items
+                .filter((item) => item.recipientState === 'ELIGIBLE')
+                .map((item) => ({
+                  itemId: item.id,
+                  appointmentRef: item.appointmentRef,
+                  patientRef: item.patientRef,
+                  recipientRef: item.recipientRef,
+                  phoneRef: item.informedPhoneRef,
+                  appointmentTime: item.appointmentTime,
+                })),
+            }),
+          ),
+        },
+      });
+      return approved;
     });
     await this.audit(
       actor,
@@ -916,6 +983,17 @@ export class ConfirmationAdminService {
     return CampaignRecipientState.PENDING;
   }
 
+  private normalizeAppointmentTime(value: string | null | undefined): string | null {
+    if (value == null || value === '') {
+      return null;
+    }
+    const matched = /^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/.exec(value);
+    if (!matched) {
+      throw new BadRequestException('Horário do agendamento inválido.');
+    }
+    return `${matched[1]}:${matched[2]}`;
+  }
+
   private normalizeItems(items: readonly ItemDraft[]) {
     const seen = new Set<string>();
     return items.map((item) => {
@@ -924,13 +1002,7 @@ export class ConfirmationAdminService {
         throw new BadRequestException('Há agendamento repetido na campanha.');
       }
       seen.add(appointmentRef);
-      const appointmentTime = item.appointmentTime ?? null;
-      if (
-        appointmentTime &&
-        !/^([01]\d|2[0-3]):[0-5]\d$/.test(appointmentTime)
-      ) {
-        throw new BadRequestException('Horário do agendamento inválido.');
-      }
+      const appointmentTime = this.normalizeAppointmentTime(item.appointmentTime);
       return {
         appointmentRef,
         patientRef: item.patientRef ? assertPatientRef(item.patientRef) : null,
@@ -1098,6 +1170,7 @@ export class ConfirmationAdminService {
     consultationState: CampaignConsultationState;
     consultationReason: string | null;
     approvedAt: Date | null;
+    responseDeadlineAt?: Date | null;
     createdAt: Date;
     createdBy: { id: number; name: string };
     approvedBy: { id: number; name: string } | null;
@@ -1115,14 +1188,15 @@ export class ConfirmationAdminService {
       unavailableRecipients: row.unavailableRecipients,
       consultationState: row.consultationState,
       consultationReason: row.consultationReason,
+      responseDeadlineAt: row.responseDeadlineAt?.toISOString() ?? null,
       approvedAt: row.approvedAt ? formatInstant(row.approvedAt) : null,
       createdAt: formatInstant(row.createdAt),
       createdBy: row.createdBy,
       approvedBy: row.approvedBy,
       dispatchEnabled: false,
-      technicalFailures: row.items?.filter((item) =>
-        item.appointmentRef.startsWith('fail:'),
-      ).length ?? 0,
+      technicalFailures:
+        row.items?.filter((item) => item.appointmentRef.startsWith('fail:'))
+          .length ?? 0,
     };
   }
 
@@ -1139,14 +1213,22 @@ export class ConfirmationAdminService {
       identityStatus: 'unavailable' as const,
     }));
     if (row.source !== CampaignSourceKey.SAUDEVIANET) {
-      return { ...campaign, identityStatus: 'unavailable' as const, items: blank };
+      return {
+        ...campaign,
+        identityStatus: 'unavailable' as const,
+        items: blank,
+      };
     }
     try {
       const mapped = mapCampaignIdentity(
         await this.identity.identify(campaign.campaignDate),
       );
       if (!mapped || mapped.state === 'unavailable') {
-        return { ...campaign, identityStatus: 'unavailable' as const, items: blank };
+        return {
+          ...campaign,
+          identityStatus: 'unavailable' as const,
+          items: blank,
+        };
       }
       const byAppointment = new Map(
         mapped.items.map((item) => [item.appointmentRef, item]),
@@ -1172,12 +1254,18 @@ export class ConfirmationAdminService {
             maskedPhone: visual.maskedPhone,
             professionalName: visual.professionalName,
             phoneStatus: visual.phoneStatus,
-            identityStatus: visual.displayName ? ('ready' as const) : ('partial' as const),
+            identityStatus: visual.displayName
+              ? ('ready' as const)
+              : ('partial' as const),
           };
         }),
       };
     } catch {
-      return { ...campaign, identityStatus: 'unavailable' as const, items: blank };
+      return {
+        ...campaign,
+        identityStatus: 'unavailable' as const,
+        items: blank,
+      };
     }
   }
 

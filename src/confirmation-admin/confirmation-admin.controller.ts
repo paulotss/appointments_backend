@@ -20,6 +20,7 @@ import type { AuthPrincipal } from '../auth/interfaces/jwt-payload.interface';
 import { STAFF_ROLES } from '../auth/roles';
 import { ConfirmationAdminService } from './confirmation-admin.service';
 import {
+  ResponseDeadlineDto,
   AssociateSubjectDto,
   CreateCampaignDto,
   InformVerificationDto,
@@ -72,6 +73,15 @@ export class ConfirmationCampaignsController {
     @Body() dto: ReplaceCampaignItemsDto,
   ) {
     return this.admin.replaceItems(user, id, dto);
+  }
+
+  @Put(':id/response-deadline')
+  deadline(
+    @CurrentUser() user: AuthPrincipal,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ResponseDeadlineDto,
+  ) {
+    return this.admin.setResponseDeadline(user, id, dto.responseDeadlineAt);
   }
 
   @Post(':id/review')

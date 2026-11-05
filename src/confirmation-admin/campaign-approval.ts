@@ -18,6 +18,9 @@ export function campaignRevision(campaign: ApprovalCampaign): string {
       date: campaign.campaignDate,
       source: campaign.source,
       status: campaign.status,
+      ...(campaign.responseDeadlineAt
+        ? { responseDeadlineAt: campaign.responseDeadlineAt }
+        : {}),
       approvedAt: campaign.approvedAt,
       approvedBy: campaign.approvedByUserId,
       consultation: campaign.consultationState,

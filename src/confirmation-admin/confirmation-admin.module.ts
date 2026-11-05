@@ -1,3 +1,8 @@
+import { ConfirmationResultsService } from './confirmation-results.service';
+import {
+  ConfirmationResultsController,
+  ConfirmationResponseAdminController,
+} from './confirmation-results.controller';
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import {
@@ -32,11 +37,14 @@ import {
     ConfirmationSimulationController,
     ConfirmationSimulationHistoryController,
     ConfirmationExecutionController,
+    ConfirmationResultsController,
+    ConfirmationResponseAdminController,
   ],
   providers: [
     ConfirmationAdminService,
     ConfirmationSimulationService,
     ConfirmationExecutionService,
+    ConfirmationResultsService,
     {
       provide: AppointmentSourceRegistry,
       useFactory: () => defaultAppointmentSources(httpCampaignSourceClient()),

@@ -42,6 +42,7 @@ enum ServiceTokenScope {
   CLINIC_REGISTRY_READ
   CONFIRMATION_SIMULATE
   CONFIRMATION_EXECUTION_READ
+  CONFIRMATION_RESULTS_WRITE
 
   @@map("service_token_scope")
 }
@@ -1316,6 +1317,7 @@ model ConfirmationCampaign {
   createdByUserId        Int                  @map("created_by_user_id")
   approvedByUserId       Int?                 @map("approved_by_user_id")
   approvedAt             DateTime?            @map("approved_at") @db.Timestamp(3)
+  responseDeadlineAt     DateTime?            @map("response_deadline_at") @db.Timestamptz(3)
   createdAt              DateTime             @default(now()) @map("created_at") @db.Timestamp(3)
   updatedAt              DateTime             @updatedAt @map("updated_at") @db.Timestamp(3)
   createdBy              User                 @relation("CampaignCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
@@ -1399,4 +1401,74 @@ model ConfirmationAuditEvent {
   @@index([subjectType, subjectId])
   @@index([actorUserId])
   @@map("confirmation_audit_events")
+}
+
+
+model ConfirmationApprovalSnapshot {
+  revision   String   @id @db.Char(64)
+  campaignId Int      @map("campaign_id")
+  snapshot   Json     @db.JsonB
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("confirmation_approval_snapshots")
+}
+
+model ConfirmationResponse {
+  executionKey       String   @id @map("execution_key") @db.Char(64)
+  campaignId         Int      @map("campaign_id")
+  itemId             Int      @map("item_id")
+  revision           String   @db.Char(64)
+  appointmentRef     String   @map("appointment_ref") @db.VarChar(128)
+  appointmentTime    String   @map("appointment_time") @db.VarChar(8)
+  responseDeadlineAt DateTime @map("response_deadline_at") @db.Timestamptz(3)
+  accountId          Int      @map("account_id")
+  inboxId            Int      @map("inbox_id")
+  conversationId     Int?     @map("conversation_id")
+  transportStatus    String   @map("transport_status") @db.VarChar(32)
+  deliveryStatus     String?  @map("delivery_status") @db.VarChar(16)
+  responseStatus     String   @map("response_status") @db.VarChar(32)
+  sequence           Int
+  updatedAt          DateTime @map("updated_at") @db.Timestamptz(3)
+
+  @@index([campaignId])
+  @@map("confirmation_responses")
+}
+
+model ConfirmationResponseEvent {
+  eventId      String   @id @map("event_id") @db.Char(64)
+  executionKey String   @map("execution_key") @db.Char(64)
+  sequence     Int
+  result       Json     @db.JsonB
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([executionKey, sequence])
+  @@map("confirmation_response_events")
+}
+
+model ConfirmationResponsePending {
+  id             String   @id @default(uuid()) @db.Uuid
+  campaignId     Int      @map("campaign_id")
+  executionKey   String   @map("execution_key") @db.Char(64)
+  reason         String   @db.VarChar(64)
+  status         String   @default("OPEN") @db.VarChar(16)
+  version        Int      @default(0)
+  assignedUserId Int?     @map("assigned_user_id")
+  resolution     String?  @db.VarChar(32)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([campaignId, status])
+  @@map("confirmation_response_pending")
+}
+
+model ConfirmationResponseAction {
+  id          Int      @id @default(autoincrement())
+  pendingId   String   @map("pending_id") @db.Uuid
+  actorUserId Int      @map("actor_user_id")
+  action      String   @db.VarChar(16)
+  resolution  String?  @db.VarChar(32)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([pendingId, createdAt])
+  @@map("confirmation_response_actions")
 }
