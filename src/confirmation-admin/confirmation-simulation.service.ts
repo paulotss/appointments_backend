@@ -17,10 +17,12 @@ import {
   type AppointmentSourceLoad,
 } from './appointment-source';
 
-const include = { items: true, events: { orderBy: { id: 'asc' as const } } };
-type Campaign = Prisma.ConfirmationCampaignGetPayload<{
-  include: typeof include;
-}>;
+import {
+  approvalInclude as include,
+  campaignRevision,
+  type ApprovalCampaign as Campaign,
+} from './campaign-approval';
+export { campaignRevision } from './campaign-approval';
 type Run = Prisma.ConfirmationSimulationGetPayload<object>;
 const hash = (value: string) =>
   createHash('sha256').update(value).digest('hex');
@@ -57,38 +59,6 @@ export type SimulationReport = {
   blocked: string | null;
   items: Array<{ itemId: number; result: (typeof SIMULATION_RESULTS)[number] }>;
 };
-
-export function campaignRevision(campaign: Campaign): string {
-  return hash(
-    JSON.stringify({
-      id: campaign.id,
-      date: campaign.campaignDate,
-      source: campaign.source,
-      status: campaign.status,
-      approvedAt: campaign.approvedAt,
-      approvedBy: campaign.approvedByUserId,
-      consultation: campaign.consultationState,
-      // Lifecycle event IDs distinguish reopening/reapproval even under an identical clock.
-      events: campaign.events.map((event) => [event.id, event.action]),
-      items: [...campaign.items]
-        .sort((a, b) => a.id - b.id)
-        .map((item) => [
-          item.id,
-          item.appointmentRef,
-          item.patientRef,
-          item.recipientRef,
-          item.informedPhoneRef,
-          item.professionalRef,
-          item.appointmentTime,
-          item.agendaRef,
-          item.sourceResolution,
-          item.isMinor,
-          item.recipientState,
-          item.reasonCode,
-        ]),
-    }),
-  );
-}
 
 @Injectable()
 export class ConfirmationSimulationService {
