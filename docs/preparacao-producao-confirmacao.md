@@ -1,5 +1,8 @@
 # Preparação operacional — 10/11/2026
 
+> Registro histórico desta entrega. Para o estado atual e os limites da homologação,
+> consulte [Homologação Evolution](homologacao-confirmacao-evolution.md).
+
 ## Estado efetivo do servidor
 
 O canal escolhido é **Chatwoot + Evolution API** em `192.168.1.205`, alias
