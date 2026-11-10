@@ -1,5 +1,8 @@
 # Confirmação no legado — homologação isolada
 
+> Registro histórico desta entrega. Para o estado atual e os limites da homologação,
+> consulte [Homologação Evolution](homologacao-confirmacao-evolution.md).
+
 Entrega de 10/11/2026. Liga uma manifestação explícita e inequívoca de confirmação
 à fronteira interna do Saúde Vianet e publica o resultado no Higia. Não ativa o
 dispatcher, não envia WhatsApp e não modifica agendamentos reais.
