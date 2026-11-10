@@ -691,6 +691,7 @@ describe('ConfirmationAdminService', () => {
         connected: true,
         availability: 'ready',
         reason: null,
+        registry: null,
         items: [
           item('appointment:from-source', CampaignRecipientState.ELIGIBLE),
         ],

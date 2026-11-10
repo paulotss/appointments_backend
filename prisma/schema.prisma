@@ -1427,6 +1427,7 @@ model ConfirmationResponse {
   transportStatus    String   @map("transport_status") @db.VarChar(32)
   deliveryStatus     String?  @map("delivery_status") @db.VarChar(16)
   responseStatus     String   @map("response_status") @db.VarChar(32)
+  appointmentStatus  String   @default("not_requested") @map("appointment_status") @db.VarChar(32)
   sequence           Int
   updatedAt          DateTime @map("updated_at") @db.Timestamptz(3)
 

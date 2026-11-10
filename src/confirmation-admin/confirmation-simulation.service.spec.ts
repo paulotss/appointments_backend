@@ -4,7 +4,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Prisma } from '@prisma/client';
+import { Prisma, ServiceTokenScope } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import {
@@ -145,7 +145,7 @@ describe('approved campaign simulation contract', () => {
   it('requires a dedicated service scope; registry read and staff are insufficient', async () => {
     const { service } = fixture();
     await expect(
-      service.begin({ ...actor, scopes: ['CLINIC_REGISTRY_READ'] }, 1),
+      service.begin({ ...actor, scopes: [ServiceTokenScope.CLINIC_REGISTRY_READ] }, 1),
     ).rejects.toBeInstanceOf(ForbiddenException);
     await expect(
       service.begin({ typ: 'user' } as never, 1),

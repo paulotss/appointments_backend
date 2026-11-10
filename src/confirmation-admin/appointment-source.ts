@@ -149,8 +149,7 @@ const MASKED_PHONE = /^\(\d{2}\) \d\*{4}-\d{4}$/;
 const PATIENT_REF = /^patient:v1:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{64}$/;
 const RECIPIENT_REF = /^recipient:v1:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{64}$/;
 const PHONE_REF = /^phone:v1:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{64}$/;
-const APPOINTMENT_REF =
-  /^(?:appt|fail):v1:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{64}$/;
+const APPOINTMENT_REF = /^(?:appt|fail):v1:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{64}$/;
 const OPAQUE_REF =
   /^(?:patient|recipient|phone|appt|fail):v1:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{64}$/;
 const IDENTITY_KEYS = new Set([
@@ -171,17 +170,48 @@ const IDENTITY_KEYS = new Set([
   'appointmentdate',
 ]);
 
+function accessHeaders(env: NodeJS.ProcessEnv): Record<string, string> {
+  const id = env.SAUDEVIANET_ACCESS_CLIENT_ID?.trim();
+  const secret = env.SAUDEVIANET_ACCESS_CLIENT_SECRET?.trim();
+  if (
+    Boolean(id) !== Boolean(secret) ||
+    (secret && secret === env.SAUDEVIANET_INTERNAL_API_TOKEN) ||
+    /[\r\n]/.test((id ?? '') + (secret ?? ''))
+  )
+    throw new Error('invalid_source_access_configuration');
+  if (!id || !secret) return {};
+  let url: URL;
+  try {
+    url = new URL(env.SAUDEVIANET_INTERNAL_API_BASE ?? '');
+  } catch {
+    throw new Error('invalid_source_access_configuration');
+  }
+  if (
+    url.protocol !== 'https:' ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash
+  )
+    throw new Error('invalid_source_access_configuration');
+  return { 'CF-Access-Client-Id': id, 'CF-Access-Client-Secret': secret };
+}
+
 export function httpCampaignSourceClient(
   env: NodeJS.ProcessEnv = process.env,
   fetchImpl: typeof fetch = fetch,
 ): CampaignSourceClient {
   const base = env.SAUDEVIANET_INTERNAL_API_BASE?.replace(/\/$/, '');
   const token = env.SAUDEVIANET_INTERNAL_API_TOKEN;
+  const access = accessHeaders(env);
   const configuredTimeout = env.SAUDEVIANET_CAMPAIGN_SOURCE_TIMEOUT_MS;
-  const collectionTimeout = configuredTimeout === undefined
-    ? 60000
-    : Number(configuredTimeout);
-  if (!Number.isInteger(collectionTimeout) || collectionTimeout < 1000 || collectionTimeout > 300000) {
+  const collectionTimeout =
+    configuredTimeout === undefined ? 60000 : Number(configuredTimeout);
+  if (
+    !Number.isInteger(collectionTimeout) ||
+    collectionTimeout < 1000 ||
+    collectionTimeout > 300000
+  ) {
     throw new Error('invalid_campaign_source_timeout');
   }
   return {
@@ -193,7 +223,9 @@ export function httpCampaignSourceClient(
         `${base}/internal/confirmations/campaign-source?date=${encodeURIComponent(campaignDate)}`,
         {
           method: 'GET',
+          redirect: 'error',
           headers: {
+            ...access,
             Accept: 'application/json',
             Authorization: `Bearer ${token}`,
           },
@@ -213,7 +245,9 @@ export function httpCampaignSourceClient(
         `${base}/internal/confirmations/classify`,
         {
           method: 'POST',
+          redirect: 'error',
           headers: {
+            ...access,
             Accept: 'application/json',
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -245,6 +279,7 @@ export function httpCampaignIdentityClient(
 ): CampaignIdentityClient {
   const base = env.SAUDEVIANET_INTERNAL_API_BASE?.replace(/\/$/, '');
   const token = env.SAUDEVIANET_INTERNAL_API_TOKEN;
+  const access = accessHeaders(env);
   return {
     async identify(campaignDate: string) {
       if (!base || !token) {
@@ -254,7 +289,9 @@ export function httpCampaignIdentityClient(
         `${base}/internal/confirmations/identification?date=${encodeURIComponent(campaignDate)}`,
         {
           method: 'GET',
+          redirect: 'error',
           headers: {
+            ...access,
             Accept: 'application/json',
             Authorization: `Bearer ${token}`,
           },
@@ -274,7 +311,9 @@ export function httpCampaignIdentityClient(
         `${base}/internal/confirmations/patient-search`,
         {
           method: 'POST',
+          redirect: 'error',
           headers: {
+            ...access,
             Accept: 'application/json',
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -311,7 +350,11 @@ export interface VisualPatient {
 export function mapCampaignIdentity(
   payload: unknown,
 ): { state: string; items: VisualAppointment[] } | null {
-  if (!visualPayload(payload) || !isRecord(payload) || !Array.isArray(payload.items)) {
+  if (
+    !visualPayload(payload) ||
+    !isRecord(payload) ||
+    !Array.isArray(payload.items)
+  ) {
     return null;
   }
   const items: VisualAppointment[] = [];
@@ -331,7 +374,11 @@ export function mapCampaignIdentity(
 export function mapPatientSearch(
   payload: unknown,
 ): { state: string; truncated: boolean; people: VisualPatient[] } | null {
-  if (!visualPayload(payload) || !isRecord(payload) || !Array.isArray(payload.people)) {
+  if (
+    !visualPayload(payload) ||
+    !isRecord(payload) ||
+    !Array.isArray(payload.people)
+  ) {
     return null;
   }
   const people: VisualPatient[] = [];
@@ -376,14 +423,23 @@ function visualPatient(raw: unknown): VisualPatient | null {
   }
   const displayName = displayOf(raw.displayName);
   const patientRef = typeof raw.patientRef === 'string' ? raw.patientRef : '';
-  const recipientRef = typeof raw.recipientRef === 'string' ? raw.recipientRef : '';
-  if (!displayName || !PATIENT_REF.test(patientRef) || !RECIPIENT_REF.test(recipientRef)) {
+  const recipientRef =
+    typeof raw.recipientRef === 'string' ? raw.recipientRef : '';
+  if (
+    !displayName ||
+    !PATIENT_REF.test(patientRef) ||
+    !RECIPIENT_REF.test(recipientRef)
+  ) {
     return null;
   }
   const phoneStatus = phoneStatusOf(raw.phoneStatus);
   const maskedPhone = maskedOf(raw.maskedPhone, phoneStatus);
   const phoneRef = raw.phoneRef == null ? null : raw.phoneRef;
-  if (maskedPhone === undefined || (phoneRef !== null && (typeof phoneRef !== 'string' || !PHONE_REF.test(phoneRef)))) {
+  if (
+    maskedPhone === undefined ||
+    (phoneRef !== null &&
+      (typeof phoneRef !== 'string' || !PHONE_REF.test(phoneRef)))
+  ) {
     return null;
   }
   return {

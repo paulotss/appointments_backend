@@ -131,6 +131,14 @@ describe('operational approval contract, transport remains disabled', () => {
       ConflictException,
     );
   });
+  it('accepts zero seconds from Python without accepting a changed second', async () => {
+    const { service, campaign, live } = fixture();
+    const revision = campaignRevision(campaign as never);
+    live.items[0].appointmentTime = '09:00:00';
+    expect((await service.check(actor, 1, 10, revision)).ready).toBe(true);
+    live.items[0].appointmentTime = '09:00:30';
+    expect((await service.check(actor, 1, 10, revision)).ready).toBe(false);
+  });
   it('rejects stale approval revisions', async () => {
     const { service, campaign } = fixture();
     const revision = campaignRevision(campaign as never);

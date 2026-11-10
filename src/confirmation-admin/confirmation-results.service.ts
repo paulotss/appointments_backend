@@ -13,6 +13,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { executionKey } from './confirmation-execution.service';
 
 export const RESPONSE_REASONS = [
+  'appointment_blocked',
+  'appointment_refused',
+  'appointment_indeterminate',
   'interpretation_required',
   'change_requested',
   'ambiguous_context',
@@ -36,6 +39,7 @@ export const RESOLUTIONS = [
   'TECHNICAL_REVIEWED',
 ] as const;
 export type ResponseResult = {
+  appointmentStatus?: string;
   eventId: string;
   executionKey: string;
   campaignId: number;
@@ -89,7 +93,10 @@ export function validateResult(body: unknown): ResponseResult {
     !body ||
     typeof body !== 'object' ||
     Array.isArray(body) ||
-    Object.keys(body).sort().join() !== [...keys].sort().join()
+    Object.keys(body)
+      .filter((key) => key !== 'appointmentStatus')
+      .sort()
+      .join() !== [...keys].sort().join()
   )
     throw new BadRequestException('Resultado inválido.');
   const p = body as ResponseResult;
@@ -124,7 +131,14 @@ export function validateResult(body: unknown): ResponseResult {
       'human',
     ].includes(p.responseStatus) ||
     (p.reason !== null && !RESPONSE_REASONS.includes(p.reason as never)) ||
-    !['transport', 'reply', 'delivery', 'expiration'].includes(p.kind) ||
+    ![
+      'transport',
+      'reply',
+      'delivery',
+      'expiration',
+      'appointment',
+      'appointment_reconciliation',
+    ].includes(p.kind) ||
     ![p.responseDeadlineAt, p.occurredAt].every(
       (v) =>
         typeof v === 'string' &&
@@ -134,6 +148,35 @@ export function validateResult(body: unknown): ResponseResult {
     p.executionKey !== executionKey(p.campaignId, p.revision, p.itemId)
   )
     throw new BadRequestException('Resultado inválido.');
+  if (p.kind === 'appointment' || p.kind === 'appointment_reconciliation') {
+    if (
+      p.kind === 'appointment_reconciliation' &&
+      p.appointmentStatus !== 'confirmed'
+    )
+      throw new BadRequestException(
+        'Reconciliação exige confirmação observada.',
+      );
+    const successful = ['confirmed', 'already_confirmed'].includes(
+      p.appointmentStatus ?? '',
+    );
+    if (
+      ![
+        'confirmed',
+        'already_confirmed',
+        'blocked',
+        'refused',
+        'indeterminate',
+      ].includes(p.appointmentStatus ?? '') ||
+      p.responseStatus !== 'confirmed' ||
+      p.transportStatus !== 'accepted' ||
+      p.reason !== (successful ? null : `appointment_${p.appointmentStatus}`)
+    )
+      throw new BadRequestException('Resultado de confirmação inválido.');
+  } else if (Object.hasOwn(p, 'appointmentStatus')) {
+    throw new BadRequestException(
+      'Estado do agendamento exige evento próprio.',
+    );
+  }
   return p;
 }
 @Injectable()
@@ -205,7 +248,29 @@ export class ConfirmationResultsService {
         p.transportStatus !== 'accepted'
       )
         throw new ConflictException('Transporte não pode regredir.');
+      if (
+        p.kind === 'appointment_reconciliation' &&
+        (!current ||
+          current.appointmentStatus !== 'indeterminate' ||
+          current.responseStatus !== 'confirmed')
+      )
+        throw new ConflictException(
+          'Reconciliação exige resultado anterior indeterminado.',
+        );
+      if (
+        p.kind === 'appointment' &&
+        (!current ||
+          current.responseStatus !== 'confirmed' ||
+          (current.appointmentStatus !== 'not_requested' &&
+            current.appointmentStatus !== p.appointmentStatus))
+      )
+        throw new ConflictException(
+          'Confirmação exige manifestação anterior e resultado consistente.',
+        );
       const data = {
+        ...(['appointment', 'appointment_reconciliation'].includes(p.kind)
+          ? { appointmentStatus: p.appointmentStatus! }
+          : {}),
         campaignId: p.campaignId,
         itemId: p.itemId,
         revision: p.revision,

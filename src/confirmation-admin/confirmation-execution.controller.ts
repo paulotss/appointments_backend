@@ -18,6 +18,22 @@ import { ConfirmationExecutionService } from './confirmation-execution.service';
 @ServiceScopes(ServiceTokenScope.CONFIRMATION_EXECUTION_READ)
 export class ConfirmationExecutionController {
   constructor(private readonly execution: ConfirmationExecutionService) {}
+  @Post('authorize-appointment')
+  @Header('Cache-Control', 'no-store')
+  authorizeAppointment(
+    @CurrentUser() actor: AuthPrincipal,
+    @Body() body: unknown,
+  ) {
+    return this.execution.authorizeAppointment(actor, body);
+  }
+  @Post('authorize-reconciliation')
+  @Header('Cache-Control', 'no-store')
+  authorizeReconciliation(
+    @CurrentUser() actor: AuthPrincipal,
+    @Body() body: unknown,
+  ) {
+    return this.execution.authorizeAppointment(actor, body, true);
+  }
   @Get('campaigns/:id')
   @Header('Cache-Control', 'no-store')
   snapshot(
