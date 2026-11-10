@@ -140,3 +140,10 @@ continua explícita e inativa por padrão. Não houve envio, confirmação real,
 provisionamento de credencial ou migração em banco de uso normal. A composição
 operacional, a reconciliação de resultados desconhecidos e a homologação do canal
 continuam pendentes para o piloto.
+
+## Preparação operacional e Evolution — 10/11/2026
+
+O canal escolhido passou a ser Chatwoot + Evolution no servidor da clínica.
+A base foi instalada sem instâncias ou pareamento. Composição, autorização por
+resposta persistida, reconciliação e limites de ativação estão em
+[preparacao-producao-confirmacao.md](preparacao-producao-confirmacao.md).

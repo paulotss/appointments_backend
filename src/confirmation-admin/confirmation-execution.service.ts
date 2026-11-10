@@ -41,6 +41,107 @@ export class ConfirmationExecutionService {
         'Escopo operacional de leitura obrigatório.',
       );
   }
+  /** Authorizes a service action from a persisted reply and immutable approval evidence. */
+  async authorizeAppointment(
+    actor: AuthPrincipal,
+    body: unknown,
+    reconciliation = false,
+  ) {
+    this.actor(actor);
+    const fields = [
+      'mode',
+      'campaignId',
+      'revision',
+      'campaignDate',
+      'responseDeadlineAt',
+      'source',
+      'itemId',
+      'executionKey',
+      'appointmentRef',
+      'patientRef',
+      'recipientRef',
+      'phoneRef',
+      'appointmentTime',
+      'recipientState',
+      'responseEventId',
+      'responseReceivedAt',
+    ];
+    const p = body as Record<string, any>;
+    if (
+      !p ||
+      typeof p !== 'object' ||
+      Array.isArray(p) ||
+      Object.keys(p).sort().join() !== fields.sort().join() ||
+      ![p.campaignId, p.itemId].every(
+        (v) => Number.isSafeInteger(v) && v > 0,
+      ) ||
+      ![p.revision, p.executionKey, p.responseEventId].every(
+        (v) => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v),
+      ) ||
+      p.executionKey !== executionKey(p.campaignId, p.revision, p.itemId) ||
+      p.mode !== 'operational' ||
+      p.source !== 'SAUDEVIANET' ||
+      p.recipientState !== 'ELIGIBLE' ||
+      typeof p.responseReceivedAt !== 'string' ||
+      !Number.isFinite(Date.parse(p.responseReceivedAt))
+    )
+      return { ready: false };
+    const event = await this.prisma.confirmationResponseEvent.findUnique({
+      where: { eventId: p.responseEventId },
+    });
+    const evidence = event?.result as Record<string, any> | undefined;
+    if (
+      !evidence ||
+      evidence.kind !== 'reply' ||
+      evidence.responseStatus !== 'confirmed' ||
+      evidence.reason !== null ||
+      evidence.executionKey !== p.executionKey ||
+      evidence.transportStatus !== 'accepted' ||
+      ![
+        'campaignId',
+        'itemId',
+        'revision',
+        'appointmentRef',
+        'responseDeadlineAt',
+      ].every((key) => evidence[key] === p[key]) ||
+      Date.parse(evidence.occurredAt) !== Date.parse(p.responseReceivedAt)
+    )
+      return { ready: false };
+    const approval = await this.prisma.confirmationApprovalSnapshot.findUnique({
+      where: { revision: p.revision },
+    });
+    const snapshot = approval?.snapshot as Record<string, any> | undefined;
+    const items = snapshot?.items?.filter(
+      (item: any) => item.itemId === p.itemId,
+    );
+    if (
+      approval?.campaignId !== p.campaignId ||
+      snapshot?.date !== p.campaignDate ||
+      snapshot?.responseDeadlineAt !== p.responseDeadlineAt ||
+      items?.length !== 1 ||
+      ![
+        'appointmentRef',
+        'patientRef',
+        'recipientRef',
+        'phoneRef',
+        'appointmentTime',
+      ].every((key) => items[0][key] === p[key])
+    )
+      return { ready: false };
+    // Reconciliation is read-only and may inspect historical evidence after revocation/reopening.
+    if (reconciliation) return { ready: true };
+    if (Date.parse(p.responseReceivedAt) >= Date.parse(p.responseDeadlineAt))
+      return { ready: false };
+    try {
+      return {
+        ready:
+          (await this.check(actor, p.campaignId, p.itemId, p.revision))
+            .ready === true,
+      };
+    } catch {
+      return { ready: false };
+    }
+  }
   private async campaign(id: number) {
     const row = await this.prisma.confirmationCampaign.findUnique({
       where: { id },

@@ -131,9 +131,14 @@ export function validateResult(body: unknown): ResponseResult {
       'human',
     ].includes(p.responseStatus) ||
     (p.reason !== null && !RESPONSE_REASONS.includes(p.reason as never)) ||
-    !['transport', 'reply', 'delivery', 'expiration', 'appointment'].includes(
-      p.kind,
-    ) ||
+    ![
+      'transport',
+      'reply',
+      'delivery',
+      'expiration',
+      'appointment',
+      'appointment_reconciliation',
+    ].includes(p.kind) ||
     ![p.responseDeadlineAt, p.occurredAt].every(
       (v) =>
         typeof v === 'string' &&
@@ -143,7 +148,14 @@ export function validateResult(body: unknown): ResponseResult {
     p.executionKey !== executionKey(p.campaignId, p.revision, p.itemId)
   )
     throw new BadRequestException('Resultado inválido.');
-  if (p.kind === 'appointment') {
+  if (p.kind === 'appointment' || p.kind === 'appointment_reconciliation') {
+    if (
+      p.kind === 'appointment_reconciliation' &&
+      p.appointmentStatus !== 'confirmed'
+    )
+      throw new BadRequestException(
+        'Reconciliação exige confirmação observada.',
+      );
     const successful = ['confirmed', 'already_confirmed'].includes(
       p.appointmentStatus ?? '',
     );
@@ -237,6 +249,15 @@ export class ConfirmationResultsService {
       )
         throw new ConflictException('Transporte não pode regredir.');
       if (
+        p.kind === 'appointment_reconciliation' &&
+        (!current ||
+          current.appointmentStatus !== 'indeterminate' ||
+          current.responseStatus !== 'confirmed')
+      )
+        throw new ConflictException(
+          'Reconciliação exige resultado anterior indeterminado.',
+        );
+      if (
         p.kind === 'appointment' &&
         (!current ||
           current.responseStatus !== 'confirmed' ||
@@ -247,7 +268,7 @@ export class ConfirmationResultsService {
           'Confirmação exige manifestação anterior e resultado consistente.',
         );
       const data = {
-        ...(p.kind === 'appointment'
+        ...(['appointment', 'appointment_reconciliation'].includes(p.kind)
           ? { appointmentStatus: p.appointmentStatus! }
           : {}),
         campaignId: p.campaignId,

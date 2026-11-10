@@ -55,19 +55,17 @@ function fixture(
       }),
     },
     confirmationResponse: {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue(
-          current && {
-            sequence: 1,
-            accountId: 1,
-            inboxId: 2,
-            conversationId: 3,
-            transportStatus: 'accepted',
-            deliveryStatus: 'read',
-            ...current,
-          },
-        ),
+      findUnique: jest.fn().mockResolvedValue(
+        current && {
+          sequence: 1,
+          accountId: 1,
+          inboxId: 2,
+          conversationId: 3,
+          transportStatus: 'accepted',
+          deliveryStatus: 'read',
+          ...current,
+        },
+      ),
       upsert: jest.fn(),
     },
     confirmationResponsePending: {
@@ -86,6 +84,39 @@ function fixture(
   return { service, tx, actor, p };
 }
 describe('legacy confirmation results', () => {
+  it('accepts an explicit observed reconciliation only for an indeterminate result', async () => {
+    const f = fixture({
+      responseStatus: 'confirmed',
+      appointmentStatus: 'indeterminate',
+    });
+    await f.service.ingest(f.actor, {
+      ...f.p,
+      kind: 'appointment_reconciliation',
+    });
+    expect(f.tx.confirmationResponse.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ appointmentStatus: 'confirmed' }),
+      }),
+    );
+    const other = fixture({
+      responseStatus: 'confirmed',
+      appointmentStatus: 'blocked',
+    });
+    await expect(
+      other.service.ingest(other.actor, {
+        ...other.p,
+        kind: 'appointment_reconciliation',
+      }),
+    ).rejects.toThrow(ConflictException);
+    expect(() =>
+      validateResult({
+        ...f.p,
+        kind: 'appointment_reconciliation',
+        appointmentStatus: 'indeterminate',
+        reason: 'appointment_indeterminate',
+      }),
+    ).toThrow(BadRequestException);
+  });
   it.each([
     'confirmed',
     'already_confirmed',
