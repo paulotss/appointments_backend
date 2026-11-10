@@ -151,10 +151,20 @@ export class ConfirmationExecutionService {
         'appointmentTime',
         'agendaRef',
         'isMinor',
-      ].every(
-        (key) =>
-          live[key as keyof typeof live] === item[key as keyof typeof item],
-      )
+      ].every((key) => {
+        if (key === 'appointmentTime') {
+          const canonical = (value: string | null | undefined) =>
+            typeof value === 'string' && /^\d{2}:\d{2}$/.test(value)
+              ? `${value}:00`
+              : value;
+          return (
+            canonical(live.appointmentTime) === canonical(item.appointmentTime)
+          );
+        }
+        return (
+          live[key as keyof typeof live] === item[key as keyof typeof item]
+        );
+      })
     )
       return refused;
     return {

@@ -131,3 +131,12 @@ no webhook e prazo por campanha. A integração permanece desligada por padrão.
 A etapa seguinte deve validar a confirmação no legado em ambiente fictício e
 fechar os requisitos do piloto; qualquer atualização ou envio real exige
 validação e autorização específicas.
+
+## Confirmação no legado em homologação — 10/11/2026
+
+A integração da resposta validada com a escrita simulada e o resultado no Higia
+está documentada em [confirmacao-legado.md](confirmacao-legado.md). A composição
+continua explícita e inativa por padrão. Não houve envio, confirmação real,
+provisionamento de credencial ou migração em banco de uso normal. A composição
+operacional, a reconciliação de resultados desconhecidos e a homologação do canal
+continuam pendentes para o piloto.
