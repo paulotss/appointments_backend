@@ -6,6 +6,7 @@ import {
   Injectable,
   NotFoundException,
   Optional,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import {
   CampaignAdminStatus,
@@ -525,6 +526,16 @@ export class ConfirmationAdminService {
   async getCampaign(id: number) {
     const row = await this.findCampaign(id);
     return this.withIdentity(this.presentCampaign(row), row);
+  }
+
+  async reclassifyContact(principal: AuthPrincipal, patientRef: string) {
+    const actor = await this.requireStaff(principal);
+    const ref = assertPatientRef(patientRef);
+    if (!this.classifier) {
+      throw new ServiceUnavailableException('Reavaliação de contato indisponível.');
+    }
+    await this.reclassifyPatient(actor, ref);
+    return { reclassified: true as const, dispatchEnabled: false as const };
   }
 
   async searchPatients(principal: AuthPrincipal, name: string) {

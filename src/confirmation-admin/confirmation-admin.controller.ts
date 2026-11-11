@@ -135,6 +135,15 @@ export class ContactRegistryController {
     return this.admin.searchPatients(user, dto.name);
   }
 
+  @Post('reclassify')
+  @ApiOperation({ summary: 'Reavaliar o contato nas campanhas sem enviar mensagens' })
+  reclassifyContact(
+    @CurrentUser() user: AuthPrincipal,
+    @Body() dto: PatientRefQueryDto,
+  ) {
+    return this.admin.reclassifyContact(user, dto.patientRef);
+  }
+
   @Post('verifications')
   @ApiOperation({
     summary: 'Registrar contato informado, sem comprovar titularidade',
