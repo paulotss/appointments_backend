@@ -34,20 +34,26 @@ const items = subjects.flatMap((person) => (person.key === 'adult' ? ['09:00', '
 })));
 
 async function main() {
+  const loads = new Map();
   const fixture = await Test.createTestingModule({ imports: [AuthModule, ConfirmationAdminModule] })
     .overrideProvider(AppointmentSourceRegistry).useValue(new AppointmentSourceRegistry([{
       key: 'SAUDEVIANET', label: 'Saúde Vianet (fixture)',
-      async load() {
-        const classified = await new HttpCampaignContactClassifier().classify(items.map((item) => ({
+      async load(campaignDate) {
+        const complete = campaignDate === '2099-03-07';
+        const first = (loads.get(campaignDate) || 0) === 0;
+        loads.set(campaignDate, (loads.get(campaignDate) || 0) + 1);
+        const effective = items.map(item => complete && first && item.patientRef === subjects.find(person => person.key === 'wrongphone').patientRef
+          ? { ...item, informedPhoneRef: null } : item);
+        const classified = await new HttpCampaignContactClassifier().classify(effective.map((item) => ({
           appointmentRef: item.appointmentRef, patientRef: item.patientRef, recipientRef: item.recipientRef,
           phoneRef: item.informedPhoneRef, isMinor: item.isMinor, resolution: item.sourceResolution,
         })));
-        const prepared = items.map((item) => {
+        const prepared = effective.map((item) => {
           const result = classified.find((row) => row.appointmentRef === item.appointmentRef);
           return { ...item, recipientState: result.contactState.toUpperCase(), reasonCode: result.reasonCode };
         });
-        return { connected: true, availability: 'partial', reason: 'partial_consultation', registry: 'ready', items: prepared,
-        failures: [{ appointmentRef: ref('fail', 'failure'), recipientState: 'UNAVAILABLE', reasonCode: 'unexpected_response', agendaRef: 'fixture-failed-agenda' }] }; },
+        return { connected: true, availability: complete ? 'ready' : 'partial', reason: complete ? null : 'partial_consultation', registry: 'ready', items: prepared,
+        failures: complete ? [] : [{ appointmentRef: ref('fail', 'failure'), recipientState: 'UNAVAILABLE', reasonCode: 'unexpected_response', agendaRef: 'fixture-failed-agenda' }] }; },
     }]))
     .overrideProvider(CAMPAIGN_IDENTITY).useValue({
       async identify() { return { state: 'ready', items: items.map((item) => ({
