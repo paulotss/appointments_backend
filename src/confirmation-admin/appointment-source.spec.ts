@@ -70,7 +70,22 @@ describe('campaign collection timeout', () => {
       expect(timeout).toHaveBeenCalledWith(
         configured === undefined ? 60000 : 90000,
       );
-      expect(request).toHaveBeenCalledTimes(1);
+      const identity = httpCampaignIdentityClient(
+        {
+          SAUDEVIANET_INTERNAL_API_BASE: 'http://fixture.invalid',
+          SAUDEVIANET_INTERNAL_API_TOKEN: 'fixture-only',
+          ...(configured === undefined
+            ? {}
+            : { SAUDEVIANET_CAMPAIGN_SOURCE_TIMEOUT_MS: configured }),
+        },
+        request,
+      );
+      timeout.mockClear();
+      await identity.identify('2099-03-06');
+      expect(timeout).toHaveBeenCalledWith(
+        configured === undefined ? 60000 : 90000,
+      );
+      expect(request).toHaveBeenCalledTimes(2);
     },
   );
 
@@ -79,6 +94,11 @@ describe('campaign collection timeout', () => {
     (value) => {
       expect(() =>
         httpCampaignSourceClient({
+          SAUDEVIANET_CAMPAIGN_SOURCE_TIMEOUT_MS: value,
+        }),
+      ).toThrow('invalid_campaign_source_timeout');
+      expect(() =>
+        httpCampaignIdentityClient({
           SAUDEVIANET_CAMPAIGN_SOURCE_TIMEOUT_MS: value,
         }),
       ).toThrow('invalid_campaign_source_timeout');
