@@ -547,6 +547,66 @@ describe('ConfirmationAdminService', () => {
       return { store, initial, load, service: serviceFor(store, [source]) };
     }
 
+    it('recupera a coleta inicial falha na mesma campanha, preservando pendências e sem criar verificações', async () => {
+      const f = fixture();
+      f.load.mockResolvedValue({ connected: true, availability: 'failed', registry: null, reason: 'query_failed', items: [] });
+      const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+      f.load.mockResolvedValue({ connected: true, availability: 'ready', registry: 'ready', reason: null,
+        items: [{ ...f.initial, recipientState: CampaignRecipientState.ELIGIBLE, reasonCode: 'contact_ready' },
+          { ...f.initial, appointmentRef: APPT_B, reasonCode: 'authorization_revoked' }] });
+      const result = await f.service.resolveCampaignPending(receptionist, campaign.id);
+      expect(result.campaign).toMatchObject({ id: campaign.id, status: 'DRAFT', consultationState: 'READY', consultationReason: null, appointmentsAnalyzed: 2, eligibleRecipients: 1, pendingVerifications: 1, dispatchEnabled: false });
+      expect(result.summary).toMatchObject({ evaluated: 2, updated: 2, resolved: 1, remaining: 1 });
+      expect(f.store.campaigns).toHaveLength(1);
+      expect(f.store.verifications).toHaveLength(0);
+      expect(f.store.authorizations).toHaveLength(0);
+      expect(result.campaign.events).toHaveLength(2);
+      await f.service.resolveCampaignPending(admin, campaign.id);
+      expect((await f.service.getCampaign(campaign.id)).items).toHaveLength(2);
+    });
+
+    it('uma nova falha ou consulta parcial mantém a campanha vazia e o histórico original', async () => {
+      const f = fixture();
+      f.load.mockResolvedValue({ connected: true, availability: 'failed', registry: null, reason: 'query_failed', items: [] });
+      const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+      for (const availability of ['failed', 'partial'] as const) {
+        f.load.mockResolvedValue({ connected: true, availability, registry: 'ready', reason: 'query_failed', items: [f.initial] });
+        await expect(f.service.resolveCampaignPending(admin, campaign.id)).rejects.toThrow('Nenhuma alteração foi aplicada');
+        const unchanged = await f.service.getCampaign(campaign.id);
+        expect(unchanged).toMatchObject({ consultationState: 'FAILED', appointmentsAnalyzed: 0, dispatchEnabled: false });
+        expect(unchanged.items).toHaveLength(0);
+        expect(unchanged.events).toHaveLength(1);
+      }
+      expect(f.store.audits).toHaveLength(1);
+    });
+
+    it('uma reconsulta bem-sucedida pode constatar agenda vazia, sem inventar agendamentos', async () => {
+      const f = fixture();
+      f.load.mockResolvedValue({ connected: true, availability: 'failed', registry: null, reason: 'query_failed', items: [] });
+      const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+      f.load.mockResolvedValue({ connected: true, availability: 'empty', registry: 'ready', reason: null, items: [] });
+      const result = await f.service.resolveCampaignPending(admin, campaign.id);
+      expect(result.campaign).toMatchObject({ consultationState: 'EMPTY', consultationReason: null, appointmentsAnalyzed: 0, status: 'DRAFT' });
+      expect(result.campaign.items).toHaveLength(0);
+      expect(result.summary.evaluated).toBe(0);
+    });
+
+    it('bloqueia a recuperação se houver mudança concorrente, aprovação ou token de serviço', async () => {
+      const f = fixture();
+      f.load.mockResolvedValue({ connected: true, availability: 'failed', registry: null, reason: 'query_failed', items: [] });
+      const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+      await expect(f.service.resolveCampaignPending(serviceToken, campaign.id)).rejects.toBeInstanceOf(ForbiddenException);
+      f.load.mockImplementation(async () => {
+        f.store.campaigns[0].responseDeadlineAt = new Date('2099-04-01T18:00:00Z');
+        return { connected: true, availability: 'ready', registry: 'ready', reason: null, items: [f.initial] };
+      });
+      await expect(f.service.resolveCampaignPending(admin, campaign.id)).rejects.toBeInstanceOf(ConflictException);
+      expect((await f.service.getCampaign(campaign.id)).items).toHaveLength(0);
+      f.store.campaigns[0].status = 'APPROVED';
+      await expect(f.service.resolveCampaignPending(admin, campaign.id)).rejects.toThrow();
+      expect(f.load).toHaveBeenCalledTimes(2);
+    });
+
     it('atualiza apenas a campanha escolhida, sem inventar verificações nem incluir novos agendamentos', async () => {
       const f = fixture();
       const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });

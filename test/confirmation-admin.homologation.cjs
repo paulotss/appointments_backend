@@ -39,9 +39,10 @@ async function main() {
     .overrideProvider(AppointmentSourceRegistry).useValue(new AppointmentSourceRegistry([{
       key: 'SAUDEVIANET', label: 'Saúde Vianet (fixture)',
       async load(campaignDate) {
-        const complete = campaignDate === '2099-03-07';
+        const complete = ['2099-03-07', '2099-03-08'].includes(campaignDate);
         const first = (loads.get(campaignDate) || 0) === 0;
         loads.set(campaignDate, (loads.get(campaignDate) || 0) + 1);
+        if (campaignDate === '2099-03-08' && first) return { connected: true, availability: 'failed', registry: null, reason: 'query_failed', items: [], failures: [] };
         const effective = items.map(item => complete && first && item.patientRef === subjects.find(person => person.key === 'noauth').patientRef
           ? { ...item, informedPhoneRef: null } : item);
         const classified = await new HttpCampaignContactClassifier().classify(effective.map((item) => ({

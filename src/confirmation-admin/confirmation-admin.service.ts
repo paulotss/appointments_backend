@@ -540,7 +540,9 @@ export class ConfirmationAdminService {
     }
     const summary = { evaluated: targets.length, updated: 0, resolved: 0,
       remaining: 0, referencesRecovered: 0, dispatchEnabled: false as const };
-    if (!targets.length) return { campaign: await this.getCampaign(id), summary };
+    const retryInitialCollection = itemId === undefined && current.items.length === 0 &&
+      current.consultationState === CampaignConsultationState.FAILED;
+    if (!targets.length && !retryInitialCollection) return { campaign: await this.getCampaign(id), summary };
     const revision = campaignRevision(current);
     let loaded: AppointmentSourceLoad;
     try {
@@ -552,7 +554,45 @@ export class ConfirmationAdminService {
         loaded.registry !== 'ready' || (loaded.failures?.length ?? 0) > 0) {
       throw new ServiceUnavailableException('A agenda ou o registro de contatos está indisponível ou incompleto. Nenhuma alteração foi aplicada.');
     }
-    const fresh = new Map(this.normalizeItems(loaded.items).map(item => [item.appointmentRef, item]));
+    const normalized = this.normalizeItems(loaded.items);
+    for (const item of normalized) {
+      if (item.recipientState === CampaignRecipientState.ELIGIBLE &&
+          (item.reasonCode !== 'contact_ready' || !item.patientRef || !item.recipientRef ||
+           !item.informedPhoneRef || item.isMinor === null ||
+           !['candidate', 'guardian_unavailable'].includes(item.sourceResolution ?? '') ||
+           (item.isMinor === true && item.sourceResolution !== 'guardian_unavailable') ||
+           (item.isMinor === false && item.sourceResolution !== 'candidate'))) {
+        item.recipientState = CampaignRecipientState.UNAVAILABLE;
+        item.reasonCode = 'reclassification_unavailable';
+      }
+    }
+    if (retryInitialCollection) {
+      const saved = await this.prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM confirmation_campaigns WHERE id=${id} FOR UPDATE`;
+        const locked = await tx.confirmationCampaign.findUniqueOrThrow({ where: { id }, include: campaignInclude });
+        this.assertEditable(locked.status);
+        if (campaignRevision(locked) !== revision || locked.items.length ||
+            locked.consultationState !== CampaignConsultationState.FAILED) {
+          throw new ConflictException('A campanha mudou durante a consulta. Recarregue antes de tentar novamente.');
+        }
+        const result = await tx.confirmationCampaign.update({ where: { id }, data: {
+          ...this.consultationOf(loaded), ...this.counts(normalized), items: { create: normalized },
+          events: { create: { action: ConfirmationAuditAction.CAMPAIGN_UPDATED, actorUserId: actor.id,
+            fromStatus: locked.status, toStatus: locked.status, createdAt: this.clock() } },
+        }, include: campaignInclude });
+        await tx.confirmationAuditEvent.create({ data: {
+          action: ConfirmationAuditAction.CAMPAIGN_UPDATED, subjectType: 'campaign', subjectId: String(id),
+          patientRef: null, actorUserId: actor.id, createdAt: this.clock(),
+        } });
+        return result;
+      });
+      summary.evaluated = normalized.length;
+      summary.updated = normalized.length;
+      summary.resolved = normalized.filter(item => item.recipientState === CampaignRecipientState.ELIGIBLE).length;
+      summary.remaining = normalized.length - summary.resolved;
+      return { campaign: await this.withIdentity(this.presentCampaign(saved), saved), summary };
+    }
+    const fresh = new Map(normalized.map(item => [item.appointmentRef, item]));
     const changes = targets.map(item => {
       const found = fresh.get(item.appointmentRef);
       if (!found) return { item, data: { recipientState: CampaignRecipientState.UNAVAILABLE,
@@ -563,15 +603,6 @@ export class ConfirmationAdminService {
           reasonCode: 'appointment_identity_changed' }, recovered: false };
       }
       const { appointmentRef: _reference, ...data } = found;
-      if (data.recipientState === CampaignRecipientState.ELIGIBLE &&
-          (data.reasonCode !== 'contact_ready' || !data.patientRef || !data.recipientRef ||
-           !data.informedPhoneRef || data.isMinor === null ||
-           !['candidate', 'guardian_unavailable'].includes(data.sourceResolution ?? '') ||
-           (data.isMinor === true && data.sourceResolution !== 'guardian_unavailable') ||
-           (data.isMinor === false && data.sourceResolution !== 'candidate'))) {
-        data.recipientState = CampaignRecipientState.UNAVAILABLE;
-        data.reasonCode = 'reclassification_unavailable';
-      }
       return { item, data, recovered: !item.informedPhoneRef && Boolean(data.informedPhoneRef) };
     });
     const saved = await this.prisma.$transaction(async tx => {
