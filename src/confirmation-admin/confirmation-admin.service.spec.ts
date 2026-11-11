@@ -532,6 +532,84 @@ function inform(
 }
 
 describe('ConfirmationAdminService', () => {
+  it('reavalia contato por ação explícita, sem criar autorização nem alterar outro paciente', async () => {
+    const store = memory();
+    const source = new SaudeVianetAppointmentSource({
+      load: async () => ({ appointmentDate: '2099-04-02', state: 'ready', reason: null,
+        items: [agendaItem(APPT_A, '09:30'), { ...agendaItem(APPT_B, '11:00'), patientRef: `patient:v1:clinic:${'ef'.repeat(32)}` }] }),
+      classify: async () => ({ items: [] }),
+    });
+    const classify = jest.fn().mockResolvedValue([{ appointmentRef: APPT_A, contactState: 'eligible', reasonCode: 'contact_ready' }]);
+    const service = serviceFor(store, [source], { classify });
+    const campaign = await service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+    expect(await service.reclassifyContact(receptionist, PATIENT)).toEqual({ reclassified: true, dispatchEnabled: false });
+    expect(classify).toHaveBeenCalledTimes(1);
+    expect(classify.mock.calls[0][0]).toHaveLength(1);
+    const result = await service.getCampaign(campaign.id);
+    expect(result.items.map(item => item.recipientState)).toEqual(['ELIGIBLE', 'PENDING']);
+    expect(result.status).toBe('DRAFT');
+    expect(result.dispatchEnabled).toBe(false);
+    expect(store.authorizations).toHaveLength(0);
+    expect(store.verifications).toHaveLength(0);
+    const auditCount = store.audits.length;
+    await service.reclassifyContact(receptionist, PATIENT);
+    expect(store.audits).toHaveLength(auditCount);
+  });
+
+  it('reavaliação não cria nem modifica o snapshot de uma campanha aprovada', async () => {
+    const store = memory();
+    const snapshots: unknown[] = [];
+    store.prisma.confirmationApprovalSnapshot.create = async (...args: unknown[]) => { snapshots.push(args[0]); return {}; };
+    let revoked = false;
+    const source = new SaudeVianetAppointmentSource({
+      load: async () => ({ appointmentDate: '2099-04-02', state: 'ready', reason: null,
+        items: [agendaItem(APPT_A, '09:30')] }),
+      classify: async () => ({ items: [] }),
+    });
+    const service = serviceFor(store, [source], { classify: async () => [{ appointmentRef: APPT_A,
+      contactState: revoked ? 'pending' : 'eligible', reasonCode: revoked ? 'authorization_revoked' : 'contact_ready' }] });
+    const campaign = await service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+    await service.reclassifyContact(admin, PATIENT);
+    await service.setResponseDeadline(admin, campaign.id, '2099-04-01T18:00:00Z');
+    await service.submitReview(admin, campaign.id);
+    await service.approve(admin, campaign.id);
+    const before = JSON.stringify(snapshots);
+    revoked = true;
+    await service.reclassifyContact(admin, PATIENT);
+    expect(snapshots).toHaveLength(1);
+    expect(JSON.stringify(snapshots)).toBe(before);
+    const result = await service.getCampaign(campaign.id);
+    expect(result.items[0].recipientState).toBe('PENDING');
+    expect(result.items[0].reasonCode).toBe('authorization_revoked');
+    expect(result.dispatchEnabled).toBe(false);
+  });
+
+  it('reavaliação exige colaborador atual e referência opaca, sem aceitar token de serviço', async () => {
+    const store = memory();
+    const classify = jest.fn().mockResolvedValue([]);
+    const service = serviceFor(store, undefined, { classify });
+    await expect(service.reclassifyContact(serviceToken, PATIENT)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.reclassifyContact(staleAdmin, PATIENT)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.reclassifyContact(admin, 'fixture-name')).rejects.toBeInstanceOf(BadRequestException);
+    expect(classify).not.toHaveBeenCalled();
+  });
+
+  it('indisponibilidade da classificação nunca promove contato na reavaliação', async () => {
+    const store = memory();
+    const source = new SaudeVianetAppointmentSource({
+      load: async () => ({ appointmentDate: '2099-04-02', state: 'ready', reason: null,
+        items: [{ ...agendaItem(APPT_A, '09:30'), contactState: 'eligible', reasonCode: 'contact_ready' }] }),
+      classify: async () => ({ items: [] }),
+    });
+    const service = serviceFor(store, [source], { classify: async () => { throw Error('fixture-unavailable'); } });
+    const campaign = await service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+    await service.reclassifyContact(admin, PATIENT);
+    const result = await service.getCampaign(campaign.id);
+    expect(result.items[0].recipientState).toBe('UNAVAILABLE');
+    expect(result.items[0].reasonCode).toBe('reclassification_unavailable');
+    expect(result.dispatchEnabled).toBe(false);
+  });
+
   it('recusa escrita de token de serviço e de papel desatualizado no banco', async () => {
     const store = memory();
     const service = serviceFor(store);
