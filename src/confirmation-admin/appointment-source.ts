@@ -197,13 +197,9 @@ function accessHeaders(env: NodeJS.ProcessEnv): Record<string, string> {
   return { 'CF-Access-Client-Id': id, 'CF-Access-Client-Secret': secret };
 }
 
-export function httpCampaignSourceClient(
-  env: NodeJS.ProcessEnv = process.env,
-  fetchImpl: typeof fetch = fetch,
-): CampaignSourceClient {
-  const base = env.SAUDEVIANET_INTERNAL_API_BASE?.replace(/\/$/, '');
-  const token = env.SAUDEVIANET_INTERNAL_API_TOKEN;
-  const access = accessHeaders(env);
+// Identification collects the same full agenda as the campaign source.
+// Keep both reads within the same bounded budget.
+function campaignReadTimeout(env: NodeJS.ProcessEnv): number {
   const configuredTimeout = env.SAUDEVIANET_CAMPAIGN_SOURCE_TIMEOUT_MS;
   const collectionTimeout =
     configuredTimeout === undefined ? 60000 : Number(configuredTimeout);
@@ -214,6 +210,17 @@ export function httpCampaignSourceClient(
   ) {
     throw new Error('invalid_campaign_source_timeout');
   }
+  return collectionTimeout;
+}
+
+export function httpCampaignSourceClient(
+  env: NodeJS.ProcessEnv = process.env,
+  fetchImpl: typeof fetch = fetch,
+): CampaignSourceClient {
+  const base = env.SAUDEVIANET_INTERNAL_API_BASE?.replace(/\/$/, '');
+  const token = env.SAUDEVIANET_INTERNAL_API_TOKEN;
+  const access = accessHeaders(env);
+  const collectionTimeout = campaignReadTimeout(env);
   return {
     async load(campaignDate: string) {
       if (!base || !token) {
@@ -280,6 +287,7 @@ export function httpCampaignIdentityClient(
   const base = env.SAUDEVIANET_INTERNAL_API_BASE?.replace(/\/$/, '');
   const token = env.SAUDEVIANET_INTERNAL_API_TOKEN;
   const access = accessHeaders(env);
+  const identificationTimeout = campaignReadTimeout(env);
   return {
     async identify(campaignDate: string) {
       if (!base || !token) {
@@ -295,7 +303,7 @@ export function httpCampaignIdentityClient(
             Accept: 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(identificationTimeout),
         },
       );
       if (!response.ok) {
