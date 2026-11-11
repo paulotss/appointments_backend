@@ -42,7 +42,7 @@ async function main() {
         const complete = campaignDate === '2099-03-07';
         const first = (loads.get(campaignDate) || 0) === 0;
         loads.set(campaignDate, (loads.get(campaignDate) || 0) + 1);
-        const effective = items.map(item => complete && first && item.patientRef === subjects.find(person => person.key === 'wrongphone').patientRef
+        const effective = items.map(item => complete && first && item.patientRef === subjects.find(person => person.key === 'noauth').patientRef
           ? { ...item, informedPhoneRef: null } : item);
         const classified = await new HttpCampaignContactClassifier().classify(effective.map((item) => ({
           appointmentRef: item.appointmentRef, patientRef: item.patientRef, recipientRef: item.recipientRef,
