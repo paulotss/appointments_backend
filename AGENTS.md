@@ -43,12 +43,16 @@
   o envio real.
 - Manter a separação entre validade do número, titularidade verificada,
   autorização de contato e revogação.
-- Número informado, formulário preenchido ou campanha aprovada não
-  tornam um destinatário automaticamente apto.
+- Política da confirmação de agenda aprovada pela clínica: para adultos,
+  um único celular válido e sem ambiguidade no Saúde Vianet dispensa
+  conferência manual de titularidade. O cadastro é a fonte operacional;
+  não criar evidência fictícia nem marcar titularidade como comprovada.
+- Preservar revogações, conflitos de identidade, falhas técnicas e
+  revalidação independente. Campanha aprovada não autoriza envio real.
 - Para menores, exigir a verificação do responsável legal.
 - Respeitar revogações e validade das autorizações. Falhas técnicas,
-  ausência de evidências ou configuração incompleta devem bloquear
-  a elegibilidade.
+  ausência de evidências obrigatórias (como responsável legal para menores)
+  ou configuração incompleta devem bloquear a elegibilidade.
 - Não inventar fundamento jurídico nem criar autorizações reais a partir
   de dados fictícios ou de uma simples marcação na interface.
 - Preservar a revalidação independente imediatamente antes de qualquer
