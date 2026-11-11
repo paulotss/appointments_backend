@@ -532,6 +532,127 @@ function inform(
 }
 
 describe('ConfirmationAdminService', () => {
+  describe('resolução automática de pendências', () => {
+    function fixture() {
+      const store = memory();
+      const initial = {
+        appointmentRef: APPT_A, patientRef: PATIENT, recipientRef: RECIPIENT,
+        informedPhoneRef: PHONE_A, appointmentTime: '09:30', professionalRef: 'fixture-professional',
+        agendaRef: 'fixture-agenda', sourceResolution: 'candidate', isMinor: false,
+        recipientState: CampaignRecipientState.PENDING, reasonCode: 'verification_missing',
+      };
+      const load = jest.fn<ReturnType<AppointmentSource['load']>, Parameters<AppointmentSource['load']>>()
+        .mockResolvedValue({ connected: true, availability: 'ready', registry: 'ready', reason: null, items: [initial] });
+      const source: AppointmentSource = { key: CampaignSourceKey.SAUDEVIANET, label: 'Fixture', load };
+      return { store, initial, load, service: serviceFor(store, [source]) };
+    }
+
+    it('atualiza apenas a campanha escolhida, sem inventar verificações nem incluir novos agendamentos', async () => {
+      const f = fixture();
+      const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+      const other = await f.service.createCampaign(admin, { campaignDate: '2099-04-03', source: CampaignSourceKey.SAUDEVIANET });
+      f.load.mockResolvedValue({ connected: true, availability: 'ready', registry: 'ready', reason: null,
+        items: [{ ...f.initial, recipientState: CampaignRecipientState.ELIGIBLE, reasonCode: 'contact_ready' }, { ...f.initial, appointmentRef: APPT_B }] });
+      const result = await f.service.resolveCampaignPending(receptionist, campaign.id);
+      expect(result.campaign.items).toHaveLength(1);
+      expect(result.campaign.items[0].id).toBe(campaign.items[0].id);
+      expect(result.campaign.items[0].recipientState).toBe('ELIGIBLE');
+      expect(result.summary).toMatchObject({ evaluated: 1, updated: 1, resolved: 1, remaining: 0, dispatchEnabled: false });
+      expect((await f.service.getCampaign(other.id)).items[0].recipientState).toBe('PENDING');
+      expect(f.store.verifications).toHaveLength(0);
+      expect(f.store.authorizations).toHaveLength(0);
+      const audits = f.store.audits.length;
+      const again = await f.service.resolveCampaignPending(receptionist, campaign.id);
+      expect(again.summary.updated).toBe(0);
+      expect(f.store.audits).toHaveLength(audits);
+    });
+
+    it('recupera a referência ausente somente da origem, sem promover contato não verificado', async () => {
+      const f = fixture();
+      f.load.mockResolvedValue({ connected: true, availability: 'ready', registry: 'ready', reason: null, items: [{ ...f.initial, informedPhoneRef: null }] });
+      const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+      f.load.mockResolvedValue({ connected: true, availability: 'ready', registry: 'ready', reason: null, items: [f.initial] });
+      const result = await f.service.resolveCampaignPending(admin, campaign.id, campaign.items[0].id);
+      expect(result.summary.referencesRecovered).toBe(1);
+      expect(result.campaign.items[0].informedPhoneRef).toBe(PHONE_A);
+      expect(result.campaign.items[0].recipientState).toBe('PENDING');
+      expect(f.store.verifications).toHaveLength(0);
+    });
+
+    it('mantém revogações e bloqueia promoção sem número ou idade conhecidos', async () => {
+      const f = fixture();
+      const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+      for (const item of [
+        { ...f.initial, reasonCode: 'authorization_revoked' },
+        { ...f.initial, informedPhoneRef: null, recipientState: CampaignRecipientState.ELIGIBLE, reasonCode: 'contact_ready' },
+        { ...f.initial, isMinor: null, recipientState: CampaignRecipientState.ELIGIBLE, reasonCode: 'contact_ready' },
+        { ...f.initial, isMinor: true, recipientState: CampaignRecipientState.ELIGIBLE, reasonCode: 'contact_ready' },
+      ]) {
+        f.load.mockResolvedValue({ connected: true, availability: 'ready', registry: 'ready', reason: null, items: [item] });
+        const result = await f.service.resolveCampaignPending(admin, campaign.id);
+        expect(result.summary.resolved).toBe(0);
+        expect(result.campaign.items[0].recipientState).not.toBe('ELIGIBLE');
+      }
+    });
+
+    it('mudança de identidade nunca reassocia paciente ou destinatário automaticamente', async () => {
+      const f = fixture();
+      const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+      f.load.mockResolvedValue({ connected: true, availability: 'ready', registry: 'ready', reason: null,
+        items: [{ ...f.initial, patientRef: `patient:v1:clinic:${'ef'.repeat(32)}`, recipientState: CampaignRecipientState.ELIGIBLE, reasonCode: 'contact_ready' }] });
+      const result = await f.service.resolveCampaignPending(admin, campaign.id);
+      expect(result.campaign.items[0].patientRef).toBe(PATIENT);
+      expect(result.campaign.items[0].reasonCode).toBe('appointment_identity_changed');
+      expect(result.campaign.items[0].recipientState).toBe('UNAVAILABLE');
+    });
+
+    it('agendamento ausente na atualização fica bloqueado sem apagar histórico', async () => {
+      const f = fixture();
+      const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+      f.load.mockResolvedValue({ connected: true, availability: 'empty', registry: 'ready', reason: null, items: [] });
+      const result = await f.service.resolveCampaignPending(admin, campaign.id);
+      expect(result.campaign.items[0].id).toBe(campaign.items[0].id);
+      expect(result.campaign.items[0].reasonCode).toBe('appointment_not_available');
+      expect(result.summary.remaining).toBe(1);
+    });
+
+    it('coleta parcial ou registro indisponível não altera a campanha', async () => {
+      const f = fixture();
+      const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+      for (const variation of [{ availability: 'partial' as const }, { registry: 'unavailable' as const }]) {
+        f.load.mockResolvedValue({ connected: true, availability: 'ready', registry: 'ready', reason: null, items: [], ...variation });
+        await expect(f.service.resolveCampaignPending(admin, campaign.id)).rejects.toThrow();
+        expect((await f.service.getCampaign(campaign.id)).items[0].recipientState).toBe('PENDING');
+      }
+    });
+
+    it('não altera campanha aprovada nem uma campanha modificada durante a consulta', async () => {
+      const f = fixture();
+      const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+      f.load.mockImplementation(async () => {
+        f.store.campaigns[0].status = 'APPROVED';
+        return { connected: true, availability: 'ready', registry: 'ready', reason: null, items: [f.initial] };
+      });
+      await expect(f.service.resolveCampaignPending(admin, campaign.id)).rejects.toBeInstanceOf(BadRequestException);
+      expect(f.store.audits).toHaveLength(1); // Creation only.
+      f.store.campaigns[0].status = 'DRAFT';
+      f.load.mockImplementation(async () => {
+        f.store.campaigns[0].responseDeadlineAt = new Date('2099-04-01T18:00:00Z');
+        return { connected: true, availability: 'ready', registry: 'ready', reason: null, items: [f.initial] };
+      });
+      await expect(f.service.resolveCampaignPending(admin, campaign.id)).rejects.toBeInstanceOf(ConflictException);
+      expect(f.store.audits).toHaveLength(1);
+    });
+
+    it('tokens de serviço e item de outra campanha são recusados antes da consulta', async () => {
+      const f = fixture();
+      const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+      await expect(f.service.resolveCampaignPending(serviceToken, campaign.id)).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(f.service.resolveCampaignPending(admin, campaign.id, 999999)).rejects.toThrow();
+      expect(f.load).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('reavalia contato por ação explícita, sem criar autorização nem alterar outro paciente', async () => {
     const store = memory();
     const source = new SaudeVianetAppointmentSource({

@@ -21,6 +21,7 @@ import { STAFF_ROLES } from '../auth/roles';
 import { ConfirmationAdminService } from './confirmation-admin.service';
 import {
   ResponseDeadlineDto,
+  ResolveCampaignPendingDto,
   AssociateSubjectDto,
   CreateCampaignDto,
   InformVerificationDto,
@@ -73,6 +74,16 @@ export class ConfirmationCampaignsController {
     @Body() dto: ReplaceCampaignItemsDto,
   ) {
     return this.admin.replaceItems(user, id, dto);
+  }
+
+  @Post(':id/resolve-pending')
+  @ApiOperation({ summary: 'Atualizar e reavaliar pendências, sem criar verificações ou enviar mensagens' })
+  resolvePending(
+    @CurrentUser() user: AuthPrincipal,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ResolveCampaignPendingDto,
+  ) {
+    return this.admin.resolveCampaignPending(user, id, dto.itemId);
   }
 
   @Put(':id/response-deadline')

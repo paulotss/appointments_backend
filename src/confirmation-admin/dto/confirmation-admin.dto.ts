@@ -28,6 +28,13 @@ const APPOINTMENT_REF = /^[a-z][a-z0-9_.:-]{0,80}$/;
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
+export class ResolveCampaignPendingDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  itemId?: number;
+}
+
 export class PatientRefQueryDto {
   @Matches(PATIENT_REF)
   patientRef!: string;
