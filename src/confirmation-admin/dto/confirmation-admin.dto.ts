@@ -24,7 +24,9 @@ const PATIENT_REF = /^patient:v1:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{64}$/;
 const RECIPIENT_REF = /^recipient:v1:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{64}$/;
 const PHONE_REF = /^phone:v1:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{64}$/;
 const OPAQUE = /^[a-z0-9][a-z0-9_.:-]{0,63}$/;
-const APPOINTMENT_REF = /^[a-z][a-z0-9_.:-]{0,80}$/;
+// Match the canonical HMAC references accepted by assertAppointmentRef as well
+// as the existing short legacy references. Key IDs may contain up to 32 chars.
+const APPOINTMENT_REF = /^(?:(?:appt|fail):v1:[a-z][a-z0-9_-]{0,31}:[0-9a-f]{64}|[a-z][a-z0-9_.:-]{0,80})$/;
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
