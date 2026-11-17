@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { ServiceTokenScope } from '@prisma/client';
 import {
   ConfirmationResultsService,
@@ -84,30 +88,59 @@ function fixture(
   return { service, tx, actor, p };
 }
 describe('legacy confirmation results', () => {
-  it('accepts an explicit observed reconciliation only for an indeterminate result', async () => {
-    const f = fixture({
+  it.each(['indeterminate', 'blocked'])(
+    'accepts observed reconciliation after %s and preserves the prior event history',
+    async (appointmentStatus) => {
+      const f = fixture({ responseStatus: 'confirmed', appointmentStatus });
+      const payload = { ...f.p, kind: 'appointment_reconciliation' };
+      await f.service.ingest(f.actor, payload);
+      expect(f.tx.confirmationResponse.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({ appointmentStatus: 'confirmed' }),
+        }),
+      );
+      expect(f.tx.confirmationResponseEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ result: payload }),
+        }),
+      );
+      expect(f.tx.confirmationResponsePending.create).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    { responseStatus: 'waiting', appointmentStatus: 'blocked' },
+    { responseStatus: 'change_requested', appointmentStatus: 'blocked' },
+    { responseStatus: 'human', appointmentStatus: 'blocked' },
+    { responseStatus: 'confirmed', appointmentStatus: 'not_requested' },
+    { responseStatus: 'confirmed', appointmentStatus: 'refused' },
+    { responseStatus: 'confirmed', appointmentStatus: 'confirmed' },
+    {
       responseStatus: 'confirmed',
-      appointmentStatus: 'indeterminate',
-    });
-    await f.service.ingest(f.actor, {
-      ...f.p,
-      kind: 'appointment_reconciliation',
-    });
-    expect(f.tx.confirmationResponse.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        update: expect.objectContaining({ appointmentStatus: 'confirmed' }),
-      }),
-    );
-    const other = fixture({
+      appointmentStatus: 'blocked',
+      transportStatus: 'blocked',
+    },
+  ])(
+    'rejects reconciliation without the prior response, accepted transport or supported state: %o',
+    async (current) => {
+      const f = fixture(current);
+      await expect(
+        f.service.ingest(f.actor, {
+          ...f.p,
+          kind: 'appointment_reconciliation',
+        }),
+      ).rejects.toThrow(ConflictException);
+      expect(f.tx.confirmationResponse.upsert).not.toHaveBeenCalled();
+      expect(f.tx.confirmationResponseEvent.create).not.toHaveBeenCalled();
+    },
+  );
+  it('ordinary results cannot replace a prior block and reconciliation cannot claim uncertainty', async () => {
+    const f = fixture({
       responseStatus: 'confirmed',
       appointmentStatus: 'blocked',
     });
-    await expect(
-      other.service.ingest(other.actor, {
-        ...other.p,
-        kind: 'appointment_reconciliation',
-      }),
-    ).rejects.toThrow(ConflictException);
+    await expect(f.service.ingest(f.actor, f.p)).rejects.toThrow(
+      ConflictException,
+    );
     expect(() =>
       validateResult({
         ...f.p,
@@ -117,6 +150,47 @@ describe('legacy confirmation results', () => {
       }),
     ).toThrow(BadRequestException);
   });
+  it('keeps the registry reader unable to publish reconciliation', async () => {
+    const f = fixture({
+      responseStatus: 'confirmed',
+      appointmentStatus: 'blocked',
+    });
+    await expect(
+      f.service.ingest(
+        {
+          typ: 'service',
+          scopes: [ServiceTokenScope.CLINIC_REGISTRY_READ],
+        } as never,
+        { ...f.p, kind: 'appointment_reconciliation' },
+      ),
+    ).rejects.toThrow(ForbiddenException);
+    expect(f.tx.confirmationResponse.upsert).not.toHaveBeenCalled();
+    expect(f.tx.confirmationResponseEvent.create).not.toHaveBeenCalled();
+  });
+  it.each([
+    { sequence: 3 },
+    { accountId: 9 },
+    { conversationId: 9 },
+    { deliveryStatus: 'delivered' },
+    { responseDeadlineAt: '2026-11-11T09:00:00.000Z' },
+  ])(
+    'preserves immutable binding, sequence and delivery checks after a block: %o',
+    async (change) => {
+      const f = fixture({
+        responseStatus: 'confirmed',
+        appointmentStatus: 'blocked',
+      });
+      await expect(
+        f.service.ingest(f.actor, {
+          ...f.p,
+          kind: 'appointment_reconciliation',
+          ...change,
+        }),
+      ).rejects.toThrow(ConflictException);
+      expect(f.tx.confirmationResponse.upsert).not.toHaveBeenCalled();
+      expect(f.tx.confirmationResponseEvent.create).not.toHaveBeenCalled();
+    },
+  );
   it.each([
     'confirmed',
     'already_confirmed',

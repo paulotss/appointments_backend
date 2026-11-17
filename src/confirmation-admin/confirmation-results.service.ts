@@ -251,11 +251,12 @@ export class ConfirmationResultsService {
       if (
         p.kind === 'appointment_reconciliation' &&
         (!current ||
-          current.appointmentStatus !== 'indeterminate' ||
-          current.responseStatus !== 'confirmed')
+          !['indeterminate', 'blocked'].includes(current.appointmentStatus) ||
+          current.responseStatus !== 'confirmed' ||
+          current.transportStatus !== 'accepted')
       )
         throw new ConflictException(
-          'Reconciliação exige resultado anterior indeterminado.',
+          'Reconciliação exige bloqueio ou incerteza prévios e resposta confirmada.',
         );
       if (
         p.kind === 'appointment' &&
