@@ -34,16 +34,18 @@ const items = subjects.flatMap((person) => (person.key === 'adult' ? ['09:00', '
 })));
 
 async function main() {
+  const appendedFixture = { ...items.find(item => item.patientRef === subjects.find(person => person.key === 'noauth').patientRef), appointmentRef: ref('appt', 'new-inclusion'), appointmentTime: '18:30' };
   const loads = new Map();
   const fixture = await Test.createTestingModule({ imports: [AuthModule, ConfirmationAdminModule] })
     .overrideProvider(AppointmentSourceRegistry).useValue(new AppointmentSourceRegistry([{
       key: 'SAUDEVIANET', label: 'Saúde Vianet (fixture)',
       async load(campaignDate) {
-        const complete = ['2099-03-07', '2099-03-08'].includes(campaignDate);
+        const complete = ['2099-03-07', '2099-03-08', '2099-03-09'].includes(campaignDate);
         const first = (loads.get(campaignDate) || 0) === 0;
         loads.set(campaignDate, (loads.get(campaignDate) || 0) + 1);
         if (campaignDate === '2099-03-08' && first) return { connected: true, availability: 'failed', registry: null, reason: 'query_failed', items: [], failures: [] };
-        const effective = items.map(item => complete && first && item.patientRef === subjects.find(person => person.key === 'noauth').patientRef
+        const sourceItems = campaignDate === '2099-03-09' && !first ? [...items, appendedFixture] : items;
+        const effective = sourceItems.map(item => complete && first && item.patientRef === subjects.find(person => person.key === 'noauth').patientRef
           ? { ...item, informedPhoneRef: null } : item);
         const classified = await new HttpCampaignContactClassifier().classify(effective.map((item) => ({
           appointmentRef: item.appointmentRef, patientRef: item.patientRef, recipientRef: item.recipientRef,
@@ -57,7 +59,7 @@ async function main() {
         failures: complete ? [] : [{ appointmentRef: ref('fail', 'failure'), recipientState: 'UNAVAILABLE', reasonCode: 'unexpected_response', agendaRef: 'fixture-failed-agenda' }] }; },
     }]))
     .overrideProvider(CAMPAIGN_IDENTITY).useValue({
-      async identify() { return { state: 'ready', items: items.map((item) => ({
+      async identify(campaignDate) { return { state: 'ready', items: (campaignDate === '2099-03-09' ? [...items, appendedFixture] : items).map((item) => ({
         appointmentRef: item.appointmentRef, displayName: subjects.find((p) => p.patientRef === item.patientRef).displayName,
         professionalName: 'Profissional fictício', phoneStatus: 'available', maskedPhone: '(11) 9****-0000',
       })) }; },

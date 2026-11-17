@@ -8,6 +8,8 @@ import {
 import { Type } from 'class-transformer';
 import {
   ArrayUnique,
+  ArrayMinSize,
+  ArrayMaxSize,
   Equals,
   IsArray,
   IsBoolean,
@@ -163,4 +165,19 @@ export class ReplaceCampaignItemsDto {
 export class ResponseDeadlineDto {
   @IsString()
   responseDeadlineAt: string;
+}
+
+export class IncludeNewCampaignItemsDto {
+  @Matches(/^[a-f0-9]{64}$/)
+  revision!: string;
+
+  @Matches(/^[a-f0-9]{64}$/)
+  sourceRevision!: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @Matches(APPOINTMENT_REF, { each: true })
+  appointmentRefs!: string[];
 }

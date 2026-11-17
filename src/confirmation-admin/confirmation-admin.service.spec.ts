@@ -459,6 +459,13 @@ function memory() {
       },
     },
     confirmationCampaignItem: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        const campaign = campaigns.find((row) => row.id === data.campaignId);
+        if (!campaign) throw Error('missing campaign');
+        const entry = { id: itemSeq++, ...data };
+        (campaign.items as Array<Record<string, unknown>>).push(entry);
+        return entry;
+      },
       deleteMany: async ({ where }: { where: { campaignId: number } }) => {
         const row = campaigns.find((item) => item.id === where.campaignId);
         const count = ((row?.items as unknown[]) ?? []).length;
@@ -1424,3 +1431,265 @@ function item(appointmentRef: string, recipientState: CampaignRecipientState) {
     reasonCode: 'verification_missing',
   };
 }
+
+describe('safe inclusion of new source appointments', () => {
+  function fixture() {
+    const store = memory();
+    const initial = {
+      appointmentRef: APPT_A,
+      patientRef: PATIENT,
+      recipientRef: RECIPIENT,
+      informedPhoneRef: PHONE_A,
+      appointmentTime: '09:00',
+      professionalRef: 'fixture-professional',
+      agendaRef: 'fixture-agenda',
+      sourceResolution: 'candidate',
+      isMinor: false,
+      recipientState: CampaignRecipientState.ELIGIBLE,
+      reasonCode: 'contact_ready',
+    };
+    const added = {
+      ...initial,
+      appointmentRef: APPT_B,
+      appointmentTime: '18:30',
+      informedPhoneRef: PHONE_B,
+    };
+    const load = jest
+      .fn<
+        ReturnType<AppointmentSource['load']>,
+        Parameters<AppointmentSource['load']>
+      >()
+      .mockResolvedValue({
+        connected: true,
+        availability: 'ready',
+        registry: 'ready',
+        reason: null,
+        items: [initial],
+      });
+    const source: AppointmentSource = {
+      key: CampaignSourceKey.SAUDEVIANET,
+      label: 'Fixture',
+      load,
+    };
+    return {
+      store,
+      initial,
+      added,
+      load,
+      service: serviceFor(store, [source]),
+      fresh: () =>
+        load.mockResolvedValue({
+          connected: true,
+          availability: 'ready',
+          registry: 'ready',
+          reason: null,
+          items: [initial, added],
+        }),
+    };
+  }
+  async function setup() {
+    const f = fixture();
+    const campaign = await f.service.createCampaign(admin, {
+      campaignDate: '2099-04-02',
+      source: CampaignSourceKey.SAUDEVIANET,
+    });
+    f.fresh();
+    return { ...f, campaign };
+  }
+  it('preview writes nothing; inclusion preserves existing IDs, records and history and requires a new approval', async () => {
+    const f = await setup();
+    const before = structuredClone(f.store.campaigns[0]);
+    const audits = f.store.audits.length;
+    const preview = await f.service.previewNewAppointments(
+      receptionist,
+      f.campaign.id,
+    );
+    expect(preview.items).toHaveLength(1);
+    expect('id' in preview.items[0]).toBe(false);
+    expect(preview.dispatchEnabled).toBe(false);
+    expect(f.store.campaigns[0]).toEqual(before);
+    expect(f.store.audits).toHaveLength(audits);
+    const result = await f.service.includeNewAppointments(
+      receptionist,
+      f.campaign.id,
+      {
+        revision: preview.revision,
+        sourceRevision: preview.sourceRevision,
+        appointmentRefs: [APPT_B],
+      },
+    );
+    expect(result.items).toHaveLength(2);
+    expect(result.items.find((i) => i.appointmentRef === APPT_A)).toMatchObject(
+      f.campaign.items[0],
+    );
+    expect(
+      (f.store.campaigns[0].items as Array<Record<string, unknown>>)[0],
+    ).toEqual((before.items as Array<Record<string, unknown>>)[0]);
+    expect(result.items.find((i) => i.appointmentRef === APPT_B)?.id).not.toBe(
+      f.campaign.items[0].id,
+    );
+    expect(result.status).toBe('DRAFT');
+    expect(result.dispatchEnabled).toBe(false);
+    expect(result.events.length).toBe(f.campaign.events.length + 1);
+    expect(result.events[0]).toEqual(f.campaign.events[0]);
+    expect(f.store.verifications).toHaveLength(0);
+    expect(f.store.authorizations).toHaveLength(0);
+    expect(
+      (await f.service.previewNewAppointments(admin, f.campaign.id)).items,
+    ).toHaveLength(0);
+    await expect(
+      f.service.includeNewAppointments(admin, f.campaign.id, {
+        revision: preview.revision,
+        sourceRevision: preview.sourceRevision,
+        appointmentRefs: [APPT_B],
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect((await f.service.getCampaign(f.campaign.id)).items).toHaveLength(2);
+  });
+  it('adds only the selected new appointment and preserves blocked classifications', async () => {
+    const f = await setup();
+    const third = {
+      ...f.added,
+      appointmentRef: 'fixture-third',
+      isMinor: true,
+      sourceResolution: 'candidate',
+    };
+    f.load.mockResolvedValue({
+      connected: true,
+      availability: 'ready',
+      registry: 'ready',
+      reason: null,
+      items: [f.initial, f.added, third],
+    });
+    const p = await f.service.previewNewAppointments(admin, f.campaign.id);
+    expect(
+      p.items.find((i) => i.appointmentRef === 'fixture-third')?.recipientState,
+    ).toBe('UNAVAILABLE');
+    const result = await f.service.includeNewAppointments(
+      admin,
+      f.campaign.id,
+      {
+        revision: p.revision,
+        sourceRevision: p.sourceRevision,
+        appointmentRefs: [APPT_B],
+      },
+    );
+    expect(result.items.map((i) => i.appointmentRef)).toEqual([APPT_A, APPT_B]);
+  });
+  it('requires staff and refuses approved campaigns without querying the source', async () => {
+    const f = await setup();
+    const count = f.load.mock.calls.length;
+    for (const actor of [serviceToken, staleAdmin])
+      await expect(
+        f.service.previewNewAppointments(actor as never, f.campaign.id),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    f.store.campaigns[0].status = 'APPROVED';
+    await expect(
+      f.service.previewNewAppointments(admin, f.campaign.id),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(f.load).toHaveBeenCalledTimes(count);
+  });
+  it('blocks source identity or eligibility changes after preview', async () => {
+    for (const change of [
+      { informedPhoneRef: PHONE_A },
+      { patientRef: `patient:v1:clinic:${'cc'.repeat(32)}` },
+      { recipientState: CampaignRecipientState.PENDING },
+    ]) {
+      const f = await setup();
+      const p = await f.service.previewNewAppointments(admin, f.campaign.id);
+      f.load.mockResolvedValue({
+        connected: true,
+        availability: 'ready',
+        registry: 'ready',
+        reason: null,
+        items: [f.initial, { ...f.added, ...change }],
+      });
+      await expect(
+        f.service.includeNewAppointments(admin, f.campaign.id, {
+          revision: p.revision,
+          sourceRevision: p.sourceRevision,
+          appointmentRefs: [APPT_B],
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect((await f.service.getCampaign(f.campaign.id)).items).toHaveLength(
+        1,
+      );
+    }
+  });
+  it('blocks a concurrent approval during the independent source read', async () => {
+    const f = await setup();
+    const p = await f.service.previewNewAppointments(admin, f.campaign.id);
+    f.load.mockImplementationOnce(async () => {
+      f.store.campaigns[0].status = 'APPROVED';
+      return {
+        connected: true,
+        availability: 'ready',
+        registry: 'ready',
+        reason: null,
+        items: [f.initial, f.added],
+      };
+    });
+    await expect(
+      f.service.includeNewAppointments(admin, f.campaign.id, {
+        revision: p.revision,
+        sourceRevision: p.sourceRevision,
+        appointmentRefs: [APPT_B],
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect((await f.service.getCampaign(f.campaign.id)).items).toHaveLength(1);
+  });
+  it('blocks a concurrent approval under the campaign lock', async () => {
+    const f = await setup();
+    const p = await f.service.previewNewAppointments(admin, f.campaign.id);
+    f.store.prisma.$queryRaw = async () => {
+      f.store.campaigns[0].status = 'APPROVED';
+      return [];
+    };
+    await expect(
+      f.service.includeNewAppointments(admin, f.campaign.id, {
+        revision: p.revision,
+        sourceRevision: p.sourceRevision,
+        appointmentRefs: [APPT_B],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect((await f.service.getCampaign(f.campaign.id)).items).toHaveLength(1);
+  });
+  it('cannot include existing, nonexistent, duplicate or unreviewed appointments', async () => {
+    for (const refs of [[APPT_A], ['fixture-missing'], [APPT_B, APPT_B], []]) {
+      const f = await setup();
+      const p = await f.service.previewNewAppointments(admin, f.campaign.id);
+      await expect(
+        f.service.includeNewAppointments(admin, f.campaign.id, {
+          revision: p.revision,
+          sourceRevision: p.sourceRevision,
+          appointmentRefs: refs,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect((await f.service.getCampaign(f.campaign.id)).items).toHaveLength(
+        1,
+      );
+    }
+  });
+  it.each(['partial', 'failed', 'registry', 'exception'])(
+    'fails closed for %s source',
+    async (reason) => {
+      const f = await setup();
+      if (reason === 'exception')
+        f.load.mockRejectedValue(Error('fixture outage'));
+      else
+        f.load.mockResolvedValue({
+          connected: true,
+          availability: reason === 'registry' ? 'ready' : (reason as never),
+          registry: reason === 'registry' ? 'unavailable' : 'ready',
+          reason: null,
+          items: [f.initial, f.added],
+        });
+      await expect(
+        f.service.previewNewAppointments(admin, f.campaign.id),
+      ).rejects.toThrow();
+      expect((await f.service.getCampaign(f.campaign.id)).items).toHaveLength(
+        1,
+      );
+    },
+  );
+});
