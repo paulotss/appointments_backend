@@ -1,6 +1,7 @@
 import {
   httpCampaignSourceClient,
   httpCampaignIdentityClient,
+  SaudeVianetAppointmentSource,
 } from './appointment-source';
 
 describe('Cloudflare Access service authentication', () => {
@@ -68,7 +69,7 @@ describe('campaign collection timeout', () => {
       );
       await client.load('2099-03-06');
       expect(timeout).toHaveBeenCalledWith(
-        configured === undefined ? 60000 : 90000,
+        configured === undefined ? 120000 : 90000,
       );
       const identity = httpCampaignIdentityClient(
         {
@@ -83,7 +84,7 @@ describe('campaign collection timeout', () => {
       timeout.mockClear();
       await identity.identify('2099-03-06');
       expect(timeout).toHaveBeenCalledWith(
-        configured === undefined ? 60000 : 90000,
+        configured === undefined ? 120000 : 90000,
       );
       expect(request).toHaveBeenCalledTimes(2);
     },
@@ -114,6 +115,54 @@ describe('campaign collection timeout', () => {
       },
       request,
     );
-    await expect(client.load('2099-03-06')).rejects.toThrow('timeout');
+    await expect(client.load('2099-03-06')).rejects.toThrow(
+      'source_query_failed',
+    );
+  });
+});
+
+describe('source failures keep finite diagnostics without upstream data', () => {
+  const env = {
+    SAUDEVIANET_INTERNAL_API_BASE: 'http://fixture.invalid',
+    SAUDEVIANET_INTERNAL_API_TOKEN: 'fixture-only',
+  };
+  it.each([
+    [
+      new DOMException('fixture private payload', 'TimeoutError'),
+      'source_timeout',
+    ],
+    [new TypeError('fixture private payload'), 'source_query_failed'],
+    [new SyntaxError('fixture private payload'), 'source_invalid_response'],
+  ])(
+    'classifies read errors and removes their message',
+    async (error, reason) => {
+      const source = new SaudeVianetAppointmentSource(
+        httpCampaignSourceClient(env, jest.fn().mockRejectedValue(error)),
+      );
+      const loaded = await source.load('2099-03-06');
+      expect(loaded).toEqual(
+        expect.objectContaining({
+          connected: true,
+          availability: 'failed',
+          reason,
+          items: [],
+        }),
+      );
+      expect(JSON.stringify(loaded)).not.toContain('fixture private payload');
+    },
+  );
+  it('distinguishes an upstream HTTP refusal', async () => {
+    const source = new SaudeVianetAppointmentSource(
+      httpCampaignSourceClient(
+        env,
+        jest.fn().mockResolvedValue({ ok: false, status: 503 }),
+      ),
+    );
+    expect(await source.load('2099-03-06')).toEqual(
+      expect.objectContaining({
+        reason: 'source_http_error',
+        availability: 'failed',
+      }),
+    );
   });
 });

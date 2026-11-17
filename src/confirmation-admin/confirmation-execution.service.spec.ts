@@ -188,3 +188,144 @@ describe('operational approval contract, transport remains disabled', () => {
     ).toBe(false);
   });
 });
+
+describe('precise fail-closed revalidation diagnostics', () => {
+  it.each([
+    ['patientRef', 'patient_changed', ref('patient', 'cd')],
+    ['recipientRef', 'recipient_changed', ref('recipient', 'cd')],
+    ['informedPhoneRef', 'phone_changed', ref('phone', 'cd')],
+    ['appointmentTime', 'appointment_time_changed', '10:00'],
+    ['agendaRef', 'agenda_changed', 'fixture-other-agenda'],
+    ['isMinor', 'minor_status_changed', true],
+    ['recipientState', 'recipient_not_eligible', 'PENDING'],
+    ['reasonCode', 'contact_not_ready', 'verification_missing'],
+  ])(
+    'identifies %s without returning either value',
+    async (field, reason, value) => {
+      const { service, campaign, live } = fixture();
+      (live.items[0] as any)[field] = value;
+      const result = await service.check(
+        actor,
+        1,
+        10,
+        campaignRevision(campaign as never),
+      );
+      expect(result).toEqual({
+        mode: 'operational',
+        dispatchEnabled: false,
+        ready: false,
+        reason,
+      });
+    },
+  );
+  it.each([
+    'source_timeout',
+    'source_http_error',
+    'source_invalid_response',
+    'source_query_failed',
+    'source_not_configured',
+  ])('preserves finite source failure %s', async (reason) => {
+    const { service, campaign, source } = fixture();
+    source.load.mockResolvedValueOnce({
+      connected: true,
+      availability: 'failed',
+      reason,
+      items: [],
+    } as never);
+    expect(
+      await service.check(actor, 1, 10, campaignRevision(campaign as never)),
+    ).toEqual({
+      mode: 'operational',
+      dispatchEnabled: false,
+      ready: false,
+      reason,
+    });
+  });
+  it.each([
+    ['partial', 'source_partial'],
+    ['empty', 'source_empty'],
+  ])('distinguishes %s from changed data', async (availability, reason) => {
+    const { service, campaign, live } = fixture();
+    live.availability = availability;
+    expect(
+      await service.check(actor, 1, 10, campaignRevision(campaign as never)),
+    ).toMatchObject({ reason });
+  });
+  it.each(['fixture-private-upstream-message', 'constructor', '__proto__'])(
+    'never reflects arbitrary source messages (%s)',
+    async (unsafeReason) => {
+      const { service, campaign, source } = fixture();
+      source.load.mockResolvedValueOnce({
+        connected: true,
+        availability: 'failed',
+        reason: unsafeReason,
+        items: [],
+      } as never);
+      const result = await service.check(
+        actor,
+        1,
+        10,
+        campaignRevision(campaign as never),
+      );
+      expect(result).toMatchObject({ reason: 'source_unavailable' });
+      expect(JSON.stringify(result)).not.toContain(
+        'fixture-private-upstream-message',
+      );
+    },
+  );
+  it('distinguishes a disconnected source and a missing appointment', async () => {
+    const { service, campaign, source } = fixture();
+    const revision = campaignRevision(campaign as never);
+    source.load.mockResolvedValueOnce({ connected: false } as never);
+    expect(await service.check(actor, 1, 10, revision)).toMatchObject({
+      reason: 'source_disconnected',
+    });
+    source.load.mockResolvedValueOnce({
+      connected: true,
+      availability: 'ready',
+      items: [],
+    } as never);
+    expect(await service.check(actor, 1, 10, revision)).toMatchObject({
+      reason: 'appointment_missing',
+    });
+  });
+});
+
+describe('authenticated non-identifying read configuration', () => {
+  const key = 'SAUDEVIANET_CAMPAIGN_SOURCE_TIMEOUT_MS';
+  let prior: string | undefined;
+  beforeEach(() => {
+    prior = process.env[key];
+    delete process.env[key];
+  });
+  afterEach(() => {
+    if (prior === undefined) delete process.env[key];
+    else process.env[key] = prior;
+  });
+  it.each([
+    [undefined, 120000],
+    ['90000', 90000],
+    ['120000', 120000],
+  ])('reports effective read budget (%s)', (configured, expected) => {
+    if (configured !== undefined) process.env[key] = String(configured);
+    const { service, source } = fixture();
+    expect(service.readConfiguration(actor)).toEqual({
+      dispatchEnabled: false,
+      sourceReadTimeoutMs: expected,
+      sourceReadTimeoutConfigured: configured !== undefined,
+    });
+    expect(source.load).not.toHaveBeenCalled();
+  });
+  it('does not extend the registry or staff capability', () => {
+    const { service } = fixture();
+    expect(() =>
+      service.readConfiguration({
+        ...actor,
+        scopes: ['CLINIC_REGISTRY_READ'],
+      } as never),
+    ).toThrow(ForbiddenException);
+    expect(() =>
+      service.readConfiguration({ typ: 'user', role: 'ADMIN' } as never),
+    ).toThrow(ForbiddenException);
+  });
+});
