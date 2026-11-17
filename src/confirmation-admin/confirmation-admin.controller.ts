@@ -25,6 +25,7 @@ import {
   AssociateSubjectDto,
   CreateCampaignDto,
   InformVerificationDto,
+  IncludeNewCampaignItemsDto,
   PatientRefQueryDto,
   RecordAuthorizationDto,
   SearchPatientsDto,
@@ -74,6 +75,24 @@ export class ConfirmationCampaignsController {
     @Body() dto: ReplaceCampaignItemsDto,
   ) {
     return this.admin.replaceItems(user, id, dto);
+  }
+
+  @Get(':id/new-appointments')
+  @Header('Cache-Control', 'no-store')
+  previewNew(
+    @CurrentUser() user: AuthPrincipal,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.admin.previewNewAppointments(user, id);
+  }
+
+  @Post(':id/include-appointments')
+  includeNew(
+    @CurrentUser() user: AuthPrincipal,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: IncludeNewCampaignItemsDto,
+  ) {
+    return this.admin.includeNewAppointments(user, id, dto);
   }
 
   @Post(':id/resolve-pending')

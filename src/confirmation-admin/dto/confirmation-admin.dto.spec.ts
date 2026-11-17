@@ -1,5 +1,5 @@
 import { ValidationPipe } from '@nestjs/common';
-import { CreateCampaignDto, ReplaceCampaignItemsDto } from './confirmation-admin.dto';
+import { CreateCampaignDto, ReplaceCampaignItemsDto, IncludeNewCampaignItemsDto } from './confirmation-admin.dto';
 import { assertAppointmentRef } from '../refs';
 
 describe('campaign item reference validation', () => {
@@ -36,5 +36,38 @@ describe('campaign item reference validation', () => {
   it('still rejects additional item fields', async () => {
     await expect(pipe.transform({ items: [{ ...item('fixture'), unexpected: 'fixture' }] },
       { type: 'body', metatype: ReplaceCampaignItemsDto })).rejects.toThrow();
+  });
+});
+
+describe('new campaign appointments DTO', () => {
+  const pipe = new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    transform: true,
+  });
+  const payload = {
+    revision: 'a'.repeat(64),
+    sourceRevision: 'b'.repeat(64),
+    appointmentRefs: ['fixture-new'],
+  };
+  const validate = (body: unknown) =>
+    pipe.transform(body, {
+      type: 'body',
+      metatype: IncludeNewCampaignItemsDto,
+    });
+  it('accepts exact reviewed references', async () => {
+    await expect(validate(payload)).resolves.toBeInstanceOf(
+      IncludeNewCampaignItemsDto,
+    );
+  });
+  it.each([
+    { appointmentRefs: [] },
+    { appointmentRefs: ['fixture-new', 'fixture-new'] },
+    { appointmentRefs: [42] },
+    { revision: 'bad' },
+    { sourceRevision: 'bad' },
+    { phoneE164: 'fixture-only' },
+  ])('rejects invalid or manual extra input %j', async (change) => {
+    await expect(validate({ ...payload, ...change })).rejects.toThrow();
   });
 });

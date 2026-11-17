@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
@@ -41,6 +42,7 @@ import {
   AssociateSubjectDto,
   CreateCampaignDto,
   InformVerificationDto,
+  IncludeNewCampaignItemsDto,
   RecordAuthorizationDto,
   ReplaceCampaignItemsDto,
   VerifyVerificationDto,
@@ -634,6 +636,191 @@ export class ConfirmationAdminService {
       }, include: campaignInclude });
     });
     return { campaign: await this.withIdentity(this.presentCampaign(saved), saved), summary };
+  }
+
+  private async newAppointments(id: number) {
+    const current = await this.findCampaign(id);
+    this.assertEditable(current.status);
+    const revision = campaignRevision(current);
+    let loaded: AppointmentSourceLoad;
+    try {
+      loaded = await this.sources
+        .get(current.source)
+        .load(current.campaignDate.toISOString().slice(0, 10));
+    } catch {
+      throw new ServiceUnavailableException(
+        'Não foi possível consultar novos agendamentos. Nenhuma inclusão foi feita.',
+      );
+    }
+    if (
+      !loaded.connected ||
+      !['ready', 'empty'].includes(loaded.availability) ||
+      loaded.registry !== 'ready' ||
+      (loaded.failures?.length ?? 0) > 0
+    )
+      throw new ServiceUnavailableException(
+        'A agenda ou o registro está indisponível ou incompleto. Nenhuma inclusão foi feita.',
+      );
+    const existing = new Set(current.items.map((item) => item.appointmentRef));
+    const drafts = this.normalizeItems(loaded.items).filter(
+      (item) =>
+        !existing.has(item.appointmentRef) &&
+        !item.appointmentRef.startsWith('fail:'),
+    );
+    for (const item of drafts) {
+      if (
+        item.recipientState === CampaignRecipientState.ELIGIBLE &&
+        (item.reasonCode !== 'contact_ready' ||
+          !item.patientRef ||
+          !item.recipientRef ||
+          !item.informedPhoneRef ||
+          item.isMinor === null ||
+          !['candidate', 'guardian_unavailable'].includes(
+            item.sourceResolution ?? '',
+          ) ||
+          (item.isMinor === true &&
+            item.sourceResolution !== 'guardian_unavailable') ||
+          (item.isMinor === false && item.sourceResolution !== 'candidate'))
+      ) {
+        item.recipientState = CampaignRecipientState.UNAVAILABLE;
+        item.reasonCode = 'reclassification_unavailable';
+      }
+    }
+    const sourceRevision = createHash('sha256')
+      .update(
+        JSON.stringify(
+          [...drafts].sort((a, b) =>
+            a.appointmentRef.localeCompare(b.appointmentRef),
+          ),
+        ),
+      )
+      .digest('hex');
+    const latest = await this.findCampaign(id);
+    if (campaignRevision(latest) !== revision)
+      throw new ConflictException(
+        'A campanha mudou durante a consulta. Consulte novamente.',
+      );
+    return { current, revision, sourceRevision, drafts };
+  }
+
+  async previewNewAppointments(principal: AuthPrincipal, id: number) {
+    await this.requireStaff(principal);
+    const { current, revision, sourceRevision, drafts } =
+      await this.newAppointments(id);
+    const preview = await this.withIdentity(
+      {
+        ...this.presentCampaign(current),
+        items: drafts.map((item, index) => ({ id: -index - 1, ...item })),
+      },
+      current,
+    );
+    if (campaignRevision(await this.findCampaign(id)) !== revision)
+      throw new ConflictException(
+        'A campanha mudou durante a consulta. Consulte novamente.',
+      );
+    return {
+      revision,
+      sourceRevision,
+      dispatchEnabled: false as const,
+      identityStatus: preview.identityStatus,
+      items: preview.items.map(({ id: _id, ...item }) => item),
+    };
+  }
+
+  async includeNewAppointments(
+    principal: AuthPrincipal,
+    id: number,
+    dto: IncludeNewCampaignItemsDto,
+  ) {
+    const actor = await this.requireStaff(principal);
+    if (
+      !/^[a-f0-9]{64}$/.test(dto.revision) ||
+      !/^[a-f0-9]{64}$/.test(dto.sourceRevision) ||
+      !Array.isArray(dto.appointmentRefs) ||
+      !dto.appointmentRefs.length ||
+      dto.appointmentRefs.length > 100 ||
+      new Set(dto.appointmentRefs).size !== dto.appointmentRefs.length
+    )
+      throw new BadRequestException('Seleção de novos agendamentos inválida.');
+    const current = await this.findCampaign(id);
+    this.assertEditable(current.status);
+    if (campaignRevision(current) !== dto.revision)
+      throw new ConflictException(
+        'A campanha mudou. Consulte os novos agendamentos novamente.',
+      );
+    const fresh = await this.newAppointments(id);
+    if (
+      fresh.revision !== dto.revision ||
+      fresh.sourceRevision !== dto.sourceRevision
+    )
+      throw new ConflictException(
+        'A agenda mudou desde a conferência. Consulte os novos agendamentos novamente.',
+      );
+    const selected = dto.appointmentRefs.map((ref) =>
+      fresh.drafts.find((item) => item.appointmentRef === ref),
+    );
+    if (selected.some((item) => !item))
+      throw new BadRequestException(
+        'Selecione somente agendamentos novos encontrados na origem.',
+      );
+    const saved = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM confirmation_campaigns WHERE id=${id} FOR UPDATE`;
+      const locked = await tx.confirmationCampaign.findUniqueOrThrow({
+        where: { id },
+        include: campaignInclude,
+      });
+      this.assertEditable(locked.status);
+      if (campaignRevision(locked) !== dto.revision)
+        throw new ConflictException(
+          'A campanha mudou durante a inclusão. Consulte novamente.',
+        );
+      for (const item of selected) {
+        if (
+          !item ||
+          locked.items.some(
+            (existing) => existing.appointmentRef === item.appointmentRef,
+          )
+        )
+          throw new ConflictException(
+            'O agendamento já faz parte da campanha.',
+          );
+        await tx.confirmationCampaignItem.create({
+          data: { campaignId: id, ...item },
+        });
+      }
+      const updated = await tx.confirmationCampaign.findUniqueOrThrow({
+        where: { id },
+        include: campaignInclude,
+      });
+      const result = await tx.confirmationCampaign.update({
+        where: { id },
+        data: {
+          ...this.counts(updated.items),
+          events: {
+            create: {
+              action: ConfirmationAuditAction.CAMPAIGN_UPDATED,
+              actorUserId: actor.id,
+              fromStatus: locked.status,
+              toStatus: locked.status,
+              createdAt: this.clock(),
+            },
+          },
+        },
+        include: campaignInclude,
+      });
+      await tx.confirmationAuditEvent.create({
+        data: {
+          action: ConfirmationAuditAction.CAMPAIGN_UPDATED,
+          subjectType: 'campaign',
+          subjectId: String(id),
+          patientRef: null,
+          actorUserId: actor.id,
+          createdAt: this.clock(),
+        },
+      });
+      return result;
+    });
+    return this.withIdentity(this.presentCampaign(saved), saved);
   }
 
   async reclassifyContact(principal: AuthPrincipal, patientRef: string) {
