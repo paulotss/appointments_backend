@@ -9,7 +9,10 @@ import { createHash } from 'node:crypto';
 import type { AuthPrincipal } from '../auth/interfaces/jwt-payload.interface';
 import { isServicePrincipal } from '../auth/interfaces/jwt-payload.interface';
 import { PrismaService } from '../prisma/prisma.service';
-import { AppointmentSourceRegistry } from './appointment-source';
+import {
+  AppointmentSourceRegistry,
+  campaignReadTimeout,
+} from './appointment-source';
 import {
   approvalInclude,
   campaignRevision,
@@ -40,6 +43,15 @@ export class ConfirmationExecutionService {
       throw new ForbiddenException(
         'Escopo operacional de leitura obrigatório.',
       );
+  }
+  readConfiguration(actor: AuthPrincipal) {
+    this.actor(actor);
+    return {
+      dispatchEnabled: false as const,
+      sourceReadTimeoutMs: campaignReadTimeout(),
+      sourceReadTimeoutConfigured:
+        process.env.SAUDEVIANET_CAMPAIGN_SOURCE_TIMEOUT_MS !== undefined,
+    };
   }
   /** Authorizes a service action from a persisted reply and immutable approval evidence. */
   async authorizeAppointment(
@@ -204,13 +216,14 @@ export class ConfirmationExecutionService {
       (item) => item.id === itemId && !item.appointmentRef.startsWith('fail:'),
     );
     if (!item) throw new NotFoundException('Item não encontrado.');
-    const refused = {
-      mode: 'operational',
-      dispatchEnabled: false,
-      ready: false,
-      reason: 'revalidation_failed',
-    };
-    if (item.recipientState !== 'ELIGIBLE') return refused;
+    const refused = (reason: string) => ({
+      mode: 'operational' as const,
+      dispatchEnabled: false as const,
+      ready: false as const,
+      reason,
+    });
+    if (item.recipientState !== 'ELIGIBLE')
+      return refused('campaign_item_not_eligible');
     if (
       campaign.items.filter(
         (entry) =>
@@ -218,56 +231,72 @@ export class ConfirmationExecutionService {
           entry.informedPhoneRef === item.informedPhoneRef,
       ).length !== 1
     )
-      return { ...refused, reason: 'shared_phone' };
+      return refused('shared_phone');
     let loaded;
     try {
       loaded = await this.sources
         .get(campaign.source)
         .load(campaign.campaignDate.toISOString().slice(0, 10));
     } catch {
-      return refused;
+      return refused('source_query_failed');
     }
     const current = await this.campaign(id);
     if (campaignRevision(current) !== revision)
       throw new ConflictException('approval_changed');
-    if (!loaded.connected || loaded.availability !== 'ready') return refused;
-    if (
-      loaded.items.filter(
-        (entry) => entry.informedPhoneRef === item.informedPhoneRef,
-      ).length !== 1
-    )
-      return { ...refused, reason: 'shared_phone' };
+    if (!loaded.connected) return refused('source_disconnected');
+    if (loaded.availability !== 'ready') {
+      if (loaded.availability === 'partial') return refused('source_partial');
+      if (loaded.availability === 'empty') return refused('source_empty');
+      const sourceReasons: Record<string, string> = {
+        source_timeout: 'source_timeout',
+        source_http_error: 'source_http_error',
+        source_invalid_response: 'source_invalid_response',
+        unexpected_response: 'source_invalid_response',
+        source_query_failed: 'source_query_failed',
+        source_not_configured: 'source_not_configured',
+        authentication_failed: 'source_authentication_failed',
+        http_error: 'source_http_error',
+      };
+      return refused(
+        Object.hasOwn(sourceReasons, loaded.reason ?? '')
+          ? sourceReasons[loaded.reason!]
+          : 'source_unavailable',
+      );
+    }
+    const phoneMatches = loaded.items.filter(
+      (entry) => entry.informedPhoneRef === item.informedPhoneRef,
+    );
+    if (phoneMatches.length > 1) return refused('shared_phone');
     const matches = loaded.items.filter(
       (entry) => entry.appointmentRef === item.appointmentRef,
     );
-    if (matches.length !== 1) return refused;
+    if (matches.length === 0) return refused('appointment_missing');
+    if (matches.length !== 1) return refused('appointment_ambiguous');
     const live = matches[0];
-    if (
-      live.recipientState !== 'ELIGIBLE' ||
-      live.reasonCode !== 'contact_ready' ||
-      ![
-        'patientRef',
-        'recipientRef',
-        'informedPhoneRef',
-        'appointmentTime',
-        'agendaRef',
-        'isMinor',
-      ].every((key) => {
-        if (key === 'appointmentTime') {
-          const canonical = (value: string | null | undefined) =>
-            typeof value === 'string' && /^\d{2}:\d{2}$/.test(value)
-              ? `${value}:00`
-              : value;
-          return (
-            canonical(live.appointmentTime) === canonical(item.appointmentTime)
-          );
-        }
-        return (
-          live[key as keyof typeof live] === item[key as keyof typeof item]
-        );
-      })
-    )
-      return refused;
+    if (live.recipientState !== 'ELIGIBLE')
+      return refused('recipient_not_eligible');
+    if (live.reasonCode !== 'contact_ready')
+      return refused('contact_not_ready');
+    const comparisons = [
+      ['patientRef', 'patient_changed'],
+      ['recipientRef', 'recipient_changed'],
+      ['informedPhoneRef', 'phone_changed'],
+      ['appointmentTime', 'appointment_time_changed'],
+      ['agendaRef', 'agenda_changed'],
+      ['isMinor', 'minor_status_changed'],
+    ] as const;
+    const canonicalTime = (value: string | null | undefined) =>
+      typeof value === 'string' && /^\d{2}:\d{2}$/.test(value)
+        ? `${value}:00`
+        : value;
+    for (const [field, reason] of comparisons) {
+      const same =
+        field === 'appointmentTime'
+          ? canonicalTime(live[field]) === canonicalTime(item[field])
+          : live[field] === item[field];
+      if (!same) return refused(reason);
+    }
+    if (phoneMatches.length !== 1) return refused('source_phone_missing');
     return {
       mode: 'operational',
       dispatchEnabled: false,

@@ -1,3 +1,4 @@
+import { REVALIDATION_FAILURE_REASONS } from './revalidation-diagnostics';
 import {
   BadRequestException,
   ConflictException,
@@ -13,6 +14,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { executionKey } from './confirmation-execution.service';
 
 export const RESPONSE_REASONS = [
+  ...REVALIDATION_FAILURE_REASONS,
   'appointment_blocked',
   'appointment_refused',
   'appointment_indeterminate',
@@ -148,6 +150,14 @@ export function validateResult(body: unknown): ResponseResult {
     p.executionKey !== executionKey(p.campaignId, p.revision, p.itemId)
   )
     throw new BadRequestException('Resultado inválido.');
+  if (
+    p.reason !== 'approval_changed' &&
+    (REVALIDATION_FAILURE_REASONS as readonly unknown[]).includes(p.reason) &&
+    (p.kind !== 'transport' ||
+      p.transportStatus !== 'blocked' ||
+      p.responseStatus !== 'needs_review')
+  )
+    throw new BadRequestException('Diagnóstico exige bloqueio de envio.');
   if (p.kind === 'appointment' || p.kind === 'appointment_reconciliation') {
     if (
       p.kind === 'appointment_reconciliation' &&

@@ -1,3 +1,4 @@
+import { REVALIDATION_FAILURE_REASONS } from './revalidation-diagnostics';
 import {
   BadRequestException,
   ConflictException,
@@ -284,4 +285,33 @@ describe('legacy confirmation results', () => {
       f.tx.confirmationResponse.upsert.mock.calls[0][0].update,
     ).not.toHaveProperty('appointmentStatus');
   });
+});
+
+describe('finite blocked-transport diagnostics', () => {
+  it.each(REVALIDATION_FAILURE_REASONS)(
+    'accepts %s only as a blocked transport result',
+    (reason) => {
+      const { appointmentStatus, ...body } = result();
+      const blocked = {
+        ...body,
+        kind: 'transport',
+        transportStatus: 'blocked',
+        deliveryStatus: null,
+        responseStatus: 'needs_review',
+        reason,
+      };
+      expect(validateResult(blocked)).toEqual(blocked);
+      if (reason !== 'approval_changed') {
+        expect(() => validateResult({ ...blocked, kind: 'reply' })).toThrow(
+          BadRequestException,
+        );
+        expect(() =>
+          validateResult({ ...blocked, transportStatus: 'accepted' }),
+        ).toThrow(BadRequestException);
+        expect(() =>
+          validateResult({ ...blocked, responseStatus: 'confirmed' }),
+        ).toThrow(BadRequestException);
+      }
+    },
+  );
 });

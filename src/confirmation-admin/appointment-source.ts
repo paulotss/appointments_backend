@@ -42,6 +42,19 @@ export interface AppointmentSource {
   load(campaignDate: string): Promise<AppointmentSourceLoad>;
 }
 
+/** Finite diagnostics only: never retain an upstream URL, body or exception message. */
+export class CampaignSourceReadError extends Error {
+  constructor(
+    readonly reason:
+      | 'source_timeout'
+      | 'source_http_error'
+      | 'source_invalid_response'
+      | 'source_query_failed',
+  ) {
+    super(reason);
+  }
+}
+
 export interface CampaignContactDraft {
   appointmentRef: string;
   patientRef: string | null;
@@ -97,9 +110,11 @@ export class SaudeVianetAppointmentSource implements AppointmentSource {
       return mapCampaignSource(await this.client.load(campaignDate));
     } catch (error) {
       const reason =
-        error instanceof Error && error.message === 'source_not_configured'
-          ? 'source_not_configured'
-          : 'query_failed';
+        error instanceof CampaignSourceReadError
+          ? error.reason
+          : error instanceof Error && error.message === 'source_not_configured'
+            ? 'source_not_configured'
+            : 'query_failed';
       return {
         connected: true,
         availability: 'failed',
@@ -199,10 +214,12 @@ function accessHeaders(env: NodeJS.ProcessEnv): Record<string, string> {
 
 // Identification collects the same full agenda as the campaign source.
 // Keep both reads within the same bounded budget.
-function campaignReadTimeout(env: NodeJS.ProcessEnv): number {
+export function campaignReadTimeout(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
   const configuredTimeout = env.SAUDEVIANET_CAMPAIGN_SOURCE_TIMEOUT_MS;
   const collectionTimeout =
-    configuredTimeout === undefined ? 60000 : Number(configuredTimeout);
+    configuredTimeout === undefined ? 120000 : Number(configuredTimeout);
   if (
     !Number.isInteger(collectionTimeout) ||
     collectionTimeout < 1000 ||
@@ -226,23 +243,41 @@ export function httpCampaignSourceClient(
       if (!base || !token) {
         throw new Error('source_not_configured');
       }
-      const response = await fetchImpl(
-        `${base}/internal/confirmations/campaign-source?date=${encodeURIComponent(campaignDate)}`,
-        {
-          method: 'GET',
-          redirect: 'error',
-          headers: {
-            ...access,
-            Accept: 'application/json',
-            Authorization: `Bearer ${token}`,
+      const signal = AbortSignal.timeout(collectionTimeout);
+      try {
+        const response = await fetchImpl(
+          `${base}/internal/confirmations/campaign-source?date=${encodeURIComponent(campaignDate)}`,
+          {
+            method: 'GET',
+            redirect: 'error',
+            headers: {
+              ...access,
+              Accept: 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            signal,
           },
-          signal: AbortSignal.timeout(collectionTimeout),
-        },
-      );
-      if (!response.ok) {
-        throw new Error('query_failed');
+        );
+        if (!response.ok) {
+          throw new CampaignSourceReadError('source_http_error');
+        }
+        return (await response.json()) as unknown;
+      } catch (error) {
+        if (
+          signal.aborted ||
+          (typeof error === 'object' &&
+            error !== null &&
+            'name' in error &&
+            error.name === 'TimeoutError')
+        )
+          throw new CampaignSourceReadError('source_timeout');
+        if (error instanceof CampaignSourceReadError) throw error;
+        throw new CampaignSourceReadError(
+          error instanceof SyntaxError
+            ? 'source_invalid_response'
+            : 'source_query_failed',
+        );
       }
-      return (await response.json()) as unknown;
     },
     async classify(items: CampaignContactDraft[]) {
       if (!base || !token) {
