@@ -1,3 +1,8 @@
+import { ConfirmationSendReleaseService } from './confirmation-send-release.service';
+import {
+  ConfirmationSendReleaseController,
+  ConfirmationSendQueueController,
+} from './confirmation-send-release.controller';
 import { ConfirmationResultsService } from './confirmation-results.service';
 import {
   ConfirmationResultsController,
@@ -31,6 +36,8 @@ import {
 @Module({
   imports: [PrismaModule],
   controllers: [
+    ConfirmationSendReleaseController,
+    ConfirmationSendQueueController,
     ConfirmationCampaignsController,
     ContactRegistryController,
     ClinicRegistryReadController,
@@ -41,6 +48,7 @@ import {
     ConfirmationResponseAdminController,
   ],
   providers: [
+    ConfirmationSendReleaseService,
     ConfirmationAdminService,
     ConfirmationSimulationService,
     ConfirmationExecutionService,

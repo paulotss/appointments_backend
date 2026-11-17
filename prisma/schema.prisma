@@ -792,6 +792,8 @@ model User {
   contactSubjectAssociations  ContactSubjectAssociation[]
   confirmationCampaignsCreated ConfirmationCampaign[] @relation("CampaignCreatedBy")
   confirmationCampaignsApproved ConfirmationCampaign[] @relation("CampaignApprovedBy")
+  confirmationSendReleases ConfirmationSendRelease[]
+  confirmationSendReleaseEvents ConfirmationSendReleaseEvent[]
   confirmationCampaignEvents ConfirmationCampaignEvent[]
   confirmationAuditEvents  ConfirmationAuditEvent[]
 
@@ -1324,6 +1326,8 @@ model ConfirmationCampaign {
   approvedBy             User?                @relation("CampaignApprovedBy", fields: [approvedByUserId], references: [id], onDelete: Restrict)
   items                  ConfirmationCampaignItem[]
   events                 ConfirmationCampaignEvent[]
+  sendRelease ConfirmationSendRelease?
+  sendReleaseEvents ConfirmationSendReleaseEvent[]
   simulations            ConfirmationSimulation[]
 
   @@unique([campaignDate, source])
@@ -1472,4 +1476,33 @@ model ConfirmationResponseAction {
 
   @@index([pendingId, createdAt])
   @@map("confirmation_response_actions")
+}
+
+// Operational consent is separate from administrative approval and never changes its revision.
+model ConfirmationSendRelease {
+  campaignId Int @id @map("campaign_id")
+  revision String @db.Char(64)
+  itemIds Int[] @map("item_ids")
+  paused Boolean @default(false)
+  version Int @default(1)
+  actorUserId Int @map("actor_user_id")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  campaign ConfirmationCampaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  actor User @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  @@map("confirmation_send_releases")
+}
+
+model ConfirmationSendReleaseEvent {
+  id Int @id @default(autoincrement())
+  campaignId Int @map("campaign_id")
+  revision String @db.Char(64)
+  itemIds Int[] @map("item_ids")
+  action String @db.VarChar(16)
+  version Int
+  actorUserId Int @map("actor_user_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@index([campaignId, createdAt])
+  campaign ConfirmationCampaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  actor User @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  @@map("confirmation_send_release_events")
 }
