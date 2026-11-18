@@ -48,6 +48,7 @@ export class ConfirmationExecutionService {
     this.actor(actor);
     return {
       dispatchEnabled: false as const,
+      partialConsultationRecoverySupported: true as const,
       sourceReadTimeoutMs: campaignReadTimeout(),
       sourceReadTimeoutConfigured:
         process.env.SAUDEVIANET_CAMPAIGN_SOURCE_TIMEOUT_MS !== undefined,

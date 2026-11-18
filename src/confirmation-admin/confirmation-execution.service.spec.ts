@@ -311,6 +311,7 @@ describe('authenticated non-identifying read configuration', () => {
     const { service, source } = fixture();
     expect(service.readConfiguration(actor)).toEqual({
       dispatchEnabled: false,
+      partialConsultationRecoverySupported: true,
       sourceReadTimeoutMs: expected,
       sourceReadTimeoutConfigured: configured !== undefined,
     });
