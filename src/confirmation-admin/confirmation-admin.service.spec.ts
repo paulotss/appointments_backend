@@ -572,6 +572,81 @@ describe('ConfirmationAdminService', () => {
       expect((await f.service.getCampaign(campaign.id)).items).toHaveLength(2);
     });
 
+    function failedAgenda() {
+      return { appointmentRef: `fail:v1:clinic:${'f'.repeat(64)}`, professionalRef: 'fixture-failed',
+        agendaRef: 'fixture-failed-agenda', appointmentTime: null, patientRef: null, recipientRef: null,
+        informedPhoneRef: null, isMinor: null, sourceResolution: 'ambiguous',
+        recipientState: CampaignRecipientState.UNAVAILABLE, reasonCode: 'source_timeout' };
+    }
+
+    it('recupera consulta parcial após leitura completa, sem apagar falhas nem incluir agendamentos novos', async () => {
+      const f = fixture();
+      const item = { ...f.initial, recipientState: CampaignRecipientState.ELIGIBLE, reasonCode: 'contact_ready' };
+      f.load.mockResolvedValue({ connected: true, availability: 'partial', registry: 'ready', reason: 'partial_consultation', items: [item], failures: [failedAgenda()] });
+      const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+      const originalFailure = campaign.items.find(item => item.appointmentRef.startsWith('fail:'));
+      f.load.mockResolvedValue({ connected: true, availability: 'ready', registry: 'ready', reason: null, items: [item, { ...f.initial, appointmentRef: APPT_B }] });
+      const result = await f.service.resolveCampaignPending(receptionist, campaign.id);
+      expect(result.campaign).toMatchObject({ status: 'DRAFT', consultationState: 'READY', consultationReason: null, appointmentsAnalyzed: 1, eligibleRecipients: 1, dispatchEnabled: false });
+      expect(result.summary.updated).toBe(0); // Even unchanged items must allow truthful collection recovery.
+      expect(result.campaign.items).toHaveLength(2);
+      expect(result.campaign.items.find(item => item.appointmentRef.startsWith('fail:'))).toMatchObject(originalFailure!);
+      expect(result.campaign.items.some(item => item.appointmentRef === APPT_B)).toBe(false);
+      expect(result.campaign.events).toHaveLength(2);
+      expect(f.store.audits.at(-1)).toMatchObject({ action: 'CAMPAIGN_UPDATED', subjectType: 'campaign' });
+      expect(f.store.verifications).toHaveLength(0); expect(f.store.authorizations).toHaveLength(0);
+      const auditCount = f.store.audits.length;
+      await f.service.resolveCampaignPending(receptionist, campaign.id);
+      expect(f.store.audits).toHaveLength(auditCount);
+    });
+
+    it('não recupera o estado parcial com nova falha, registro incompleto ou falhas técnicas restantes', async () => {
+      const f = fixture();
+      f.load.mockResolvedValue({ connected: true, availability: 'partial', registry: 'ready', reason: 'partial_consultation', items: [f.initial], failures: [failedAgenda()] });
+      const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+      for (const changed of [{ availability: 'partial' as const }, { registry: 'unavailable' as const }, { failures: [failedAgenda()] }]) {
+        f.load.mockResolvedValue({ connected: true, availability: 'ready', registry: 'ready', reason: null, items: [f.initial], ...changed });
+        await expect(f.service.resolveCampaignPending(admin, campaign.id)).rejects.toThrow('Nenhuma alteração foi aplicada');
+        expect(await f.service.getCampaign(campaign.id)).toMatchObject({ consultationState: 'PARTIAL', consultationReason: 'partial_consultation' });
+        expect(f.store.campaigns[0].events).toHaveLength(1);
+      }
+    });
+
+    it('reavaliação individual não declara recuperada a consulta global da campanha', async () => {
+      const f = fixture();
+      f.load.mockResolvedValue({ connected: true, availability: 'partial', registry: 'ready', reason: 'partial_consultation', items: [f.initial], failures: [failedAgenda()] });
+      const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+      f.load.mockResolvedValue({ connected: true, availability: 'ready', registry: 'ready', reason: null, items: [f.initial] });
+      const target = campaign.items.find(item => item.appointmentRef === APPT_A)!;
+      const result = await f.service.resolveCampaignPending(receptionist, campaign.id, target.id);
+      expect(result.campaign.consultationState).toBe('PARTIAL');
+    });
+
+    it('recupera a consulta composta somente por falhas, mantendo novas inclusões para escolha explícita', async () => {
+      const f = fixture();
+      f.load.mockResolvedValue({ connected: true, availability: 'partial', registry: 'ready', reason: 'partial_consultation', items: [], failures: [failedAgenda()] });
+      const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+      f.load.mockResolvedValue({ connected: true, availability: 'ready', registry: 'ready', reason: null, items: [f.initial] });
+      const result = await f.service.resolveCampaignPending(admin, campaign.id);
+      expect(result.campaign).toMatchObject({ consultationState: 'READY', appointmentsAnalyzed: 0, eligibleRecipients: 0 });
+      expect(result.campaign.items).toHaveLength(1); expect(result.campaign.items[0].appointmentRef).toBe(failedAgenda().appointmentRef);
+    });
+
+    it('bloqueia recuperação parcial quando a campanha muda durante a consulta e exige revisão editável', async () => {
+      const f = fixture();
+      f.load.mockResolvedValue({ connected: true, availability: 'partial', registry: 'ready', reason: 'partial_consultation', items: [f.initial], failures: [failedAgenda()] });
+      const campaign = await f.service.createCampaign(admin, { campaignDate: '2099-04-02', source: CampaignSourceKey.SAUDEVIANET });
+      f.load.mockImplementation(async () => {
+        f.store.campaigns[0].responseDeadlineAt = new Date('2099-04-01T18:00:00Z');
+        return { connected: true, availability: 'ready', registry: 'ready', reason: null, items: [f.initial] };
+      });
+      await expect(f.service.resolveCampaignPending(admin, campaign.id)).rejects.toBeInstanceOf(ConflictException);
+      expect((await f.service.getCampaign(campaign.id)).consultationState).toBe('PARTIAL');
+      f.store.campaigns[0].status = 'APPROVED';
+      await expect(f.service.resolveCampaignPending(admin, campaign.id)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(f.service.resolveCampaignPending(serviceToken, campaign.id)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
     it('uma nova falha ou consulta parcial mantém a campanha vazia e o histórico original', async () => {
       const f = fixture();
       f.load.mockResolvedValue({ connected: true, availability: 'failed', registry: null, reason: 'query_failed', items: [] });

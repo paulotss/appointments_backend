@@ -544,7 +544,10 @@ export class ConfirmationAdminService {
       remaining: 0, referencesRecovered: 0, dispatchEnabled: false as const };
     const retryInitialCollection = itemId === undefined && current.items.length === 0 &&
       current.consultationState === CampaignConsultationState.FAILED;
-    if (!targets.length && !retryInitialCollection) return { campaign: await this.getCampaign(id), summary };
+    const recoverConsultation = itemId === undefined &&
+      (current.consultationState === CampaignConsultationState.PARTIAL || current.consultationState === CampaignConsultationState.FAILED);
+    if (!targets.length && !retryInitialCollection && !recoverConsultation)
+      return { campaign: await this.getCampaign(id), summary };
     const revision = campaignRevision(current);
     let loaded: AppointmentSourceLoad;
     try {
@@ -627,11 +630,23 @@ export class ConfirmationAdminService {
         } });
         summary.updated++;
       }
-      if (!summary.updated) return locked;
+      // Only a whole-campaign refresh may recover the collection state. The
+      // source and registry above must be complete; keep original failure rows
+      // as history and never include newly discovered appointments implicitly.
+      const consultation = recoverConsultation ? this.consultationOf(loaded) : null;
+      const consultationChanged = consultation !== null &&
+        (locked.consultationState !== consultation.consultationState ||
+         locked.consultationReason !== consultation.consultationReason);
+      if (!summary.updated && !consultationChanged) return locked;
+      if (consultationChanged) await tx.confirmationAuditEvent.create({ data: {
+        action: ConfirmationAuditAction.CAMPAIGN_UPDATED, subjectType: 'campaign',
+        subjectId: String(id), patientRef: null, actorUserId: actor.id, createdAt: this.clock(),
+      } });
       const updated = await tx.confirmationCampaign.findUniqueOrThrow({ where: { id }, include: campaignInclude });
       return tx.confirmationCampaign.update({ where: { id }, data: {
         ...this.counts(updated.items),
-        events: { create: { action: ConfirmationAuditAction.ITEM_RECLASSIFIED, actorUserId: actor.id,
+        ...(consultationChanged ? consultation : {}),
+        events: { create: { action: consultationChanged ? ConfirmationAuditAction.CAMPAIGN_UPDATED : ConfirmationAuditAction.ITEM_RECLASSIFIED, actorUserId: actor.id,
           fromStatus: locked.status, toStatus: locked.status, createdAt: this.clock() } },
       }, include: campaignInclude });
     });
