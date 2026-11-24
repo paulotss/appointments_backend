@@ -1,6 +1,6 @@
 import { InsuranceGuideStatus } from '@prisma/client';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
+import { Transform, TransformFnParams, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsEnum,
@@ -10,17 +10,18 @@ import {
   Min,
 } from 'class-validator';
 
-function toOptionalBoolean({ value }: { value: unknown }): unknown {
-  if (value === undefined || value === null || value === '') {
+function toOptionalBoolean({ obj, key }: TransformFnParams): unknown {
+  const raw = (obj as Record<string, unknown> | undefined)?.[key];
+  if (raw === undefined || raw === null || raw === '') {
     return undefined;
   }
-  if (value === true || value === 'true') {
+  if (raw === true || raw === 'true') {
     return true;
   }
-  if (value === false || value === 'false') {
+  if (raw === false || raw === 'false') {
     return false;
   }
-  return value;
+  return raw;
 }
 
 export class ListInsuranceGuidesQueryDto {

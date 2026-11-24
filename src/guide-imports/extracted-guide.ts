@@ -98,6 +98,7 @@ export function normalizeAuthorizationPassword(value: unknown): string | null {
   if (!text) return null;
   const compact = text.trim();
   if (compact.length === 0 || compact.length > 20) return null;
+  if (/^(null|undefined|n\/?a|none|-+)$/i.test(compact)) return null;
   if (/senha/i.test(compact)) return null;
   if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(compact)) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(compact)) return null;

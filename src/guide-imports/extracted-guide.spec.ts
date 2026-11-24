@@ -102,6 +102,21 @@ describe('sanitizeExtractedGuide', () => {
     });
     expect(extracted.procedures).toEqual([]);
   });
+
+  it('discards placeholder authorization passwords and keeps real ones', () => {
+    expect(
+      sanitizeExtractedGuide({ guide: { authorizationPassword: 'null' } }).guide
+        .authorizationPassword,
+    ).toBeNull();
+    expect(
+      sanitizeExtractedGuide({ guide: { authorizationPassword: 'undefined' } })
+        .guide.authorizationPassword,
+    ).toBeNull();
+    expect(
+      sanitizeExtractedGuide({ guide: { authorizationPassword: 'ABC123' } }).guide
+        .authorizationPassword,
+    ).toBe('ABC123');
+  });
 });
 
 describe('suggestedGuideNumber', () => {
