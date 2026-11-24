@@ -382,4 +382,17 @@ describe('InsuranceGuidesService manual used quantity', () => {
       }),
     );
   });
+
+  it('filters non-billed guides on the server when isBilled is false', async () => {
+    await service.findAll({ isBilled: false, page: 1, limit: 50 });
+
+    expect(prisma.insuranceGuide.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ isBilled: false }),
+      }),
+    );
+    expect(prisma.insuranceGuide.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({ isBilled: false }),
+    });
+  });
 });
